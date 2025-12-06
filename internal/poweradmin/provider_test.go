@@ -436,7 +436,7 @@ func TestAdjustEndpoints(t *testing.T) {
 	}
 }
 
-// TestApplyChanges_NoChanges verifies that empty changes don't cause errors (from netcup)
+// TestApplyChanges_NoChanges verifies that empty changes don't cause errors
 func TestApplyChanges_NoChanges(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{1: {}}
@@ -469,7 +469,7 @@ func TestApplyChanges_NoChanges(t *testing.T) {
 	}
 }
 
-// TestApplyChanges_Delete verifies delete operations (from glesys)
+// TestApplyChanges_Delete verifies delete operations
 func TestApplyChanges_Delete(t *testing.T) {
 	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
@@ -532,7 +532,7 @@ func TestApplyChanges_Delete(t *testing.T) {
 	}
 }
 
-// TestApplyChanges_DryRun verifies dry-run mode doesn't make API calls (from netcup)
+// TestApplyChanges_DryRun verifies dry-run mode doesn't make API calls
 func TestApplyChanges_DryRun(t *testing.T) {
 	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
@@ -587,7 +587,7 @@ func TestApplyChanges_DryRun(t *testing.T) {
 	}
 }
 
-// TestRecords_FiltersByDomain verifies domain filtering (from netcup)
+// TestRecords_FiltersByDomain verifies domain filtering
 func TestRecords_FiltersByDomain(t *testing.T) {
 	// PowerAdmin API returns full DNS names
 	zones := []Zone{
@@ -694,7 +694,7 @@ func TestRecords_SkipsSOAandNS(t *testing.T) {
 	}
 }
 
-// TestFindZoneForEndpoint verifies longest suffix matching (from netcup)
+// TestFindZoneForEndpoint verifies longest suffix matching
 func TestFindZoneForEndpoint(t *testing.T) {
 	zones := []Zone{
 		{ID: 1, Name: "example.com"},
