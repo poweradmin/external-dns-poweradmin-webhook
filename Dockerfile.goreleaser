@@ -1,11 +1,4 @@
-FROM alpine:3.23
-
-RUN apk --no-cache add ca-certificates
-
-# Create non-root user
-RUN adduser -D -u 1000 webhook
-USER webhook
-
-COPY external-dns-poweradmin-webhook /usr/local/bin/
-
-ENTRYPOINT ["external-dns-poweradmin-webhook"]
+FROM gcr.io/distroless/static-debian12:nonroot
+USER 20000:20000
+COPY --chmod=555 external-dns-poweradmin-webhook /usr/local/bin/
+ENTRYPOINT ["/usr/local/bin/external-dns-poweradmin-webhook"]
