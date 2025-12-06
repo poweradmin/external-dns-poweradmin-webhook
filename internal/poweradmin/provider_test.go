@@ -45,7 +45,7 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 	// List zones
 	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, r *http.Request) {
 		resp := ZonesResponse{Success: true, Data: ms.zones}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	// Zone records - handles all /api/v2/zones/{id}/* paths
@@ -58,29 +58,29 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 
 		if strings.Contains(path, "/records/") {
 			// /api/v2/zones/{zoneID}/records/{recordID}
-			fmt.Sscanf(path, "/api/v2/zones/%d/records/%d", &zoneID, &recordID)
+			_, _ = fmt.Sscanf(path, "/api/v2/zones/%d/records/%d", &zoneID, &recordID)
 			hasRecordID = true
 		} else if strings.HasSuffix(path, "/records") {
 			// /api/v2/zones/{zoneID}/records
-			fmt.Sscanf(path, "/api/v2/zones/%d/records", &zoneID)
+			_, _ = fmt.Sscanf(path, "/api/v2/zones/%d/records", &zoneID)
 		} else {
 			// /api/v2/zones/{zoneID}
-			fmt.Sscanf(path, "/api/v2/zones/%d", &zoneID)
+			_, _ = fmt.Sscanf(path, "/api/v2/zones/%d", &zoneID)
 		}
 
 		switch r.Method {
 		case http.MethodGet:
 			if recs, ok := ms.records[zoneID]; ok {
 				resp := RecordsResponse{Success: true, Data: recs}
-				json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(resp)
 			} else {
 				resp := RecordsResponse{Success: true, Data: []Record{}}
-				json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(resp)
 			}
 
 		case http.MethodPost:
 			var req CreateRecordRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 			ms.createCalls = append(ms.createCalls, req)
 
 			newID := len(ms.records[zoneID]) + 100
@@ -95,19 +95,19 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 			resp := RecordResponse{Success: true}
 			resp.Data.Record = newRecord
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 
 		case http.MethodPut:
 			if hasRecordID {
 				var req UpdateRecordRequest
-				json.NewDecoder(r.Body).Decode(&req)
+				_ = json.NewDecoder(r.Body).Decode(&req)
 				ms.updateCalls = append(ms.updateCalls, updateCall{
 					zoneID:   zoneID,
 					recordID: recordID,
 					request:  req,
 				})
 				resp := RecordResponse{Success: true}
-				json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(resp)
 			}
 
 		case http.MethodDelete:
