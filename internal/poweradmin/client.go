@@ -78,7 +78,9 @@ type APIResponse struct {
 type ZonesResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
-	Data    []Zone `json:"data"`
+	Data    struct {
+		Zones []Zone `json:"zones"`
+	} `json:"data"`
 }
 
 // RecordsResponse represents the response from the records list endpoint
@@ -152,7 +154,7 @@ func (c *Client) ListZones(ctx context.Context) ([]Zone, error) {
 		return nil, fmt.Errorf("API returned error: %s", response.Message)
 	}
 
-	return response.Data, nil
+	return response.Data.Zones, nil
 }
 
 // ListRecords returns all records for a specific zone

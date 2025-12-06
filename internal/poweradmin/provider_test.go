@@ -44,7 +44,8 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 
 	// List zones
 	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, r *http.Request) {
-		resp := ZonesResponse{Success: true, Data: ms.zones}
+		resp := ZonesResponse{Success: true}
+		resp.Data.Zones = ms.zones
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
@@ -131,11 +132,12 @@ func (ms *mockServer) Close() {
 
 func TestUpdateRecord_MultipleTargets(t *testing.T) {
 	// Setup: zone with two A records for same hostname
+	// PowerAdmin API returns full DNS names, so records use "www.example.com" not "www"
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 
@@ -186,11 +188,12 @@ func TestUpdateRecord_MultipleTargets(t *testing.T) {
 
 func TestUpdateRecord_DuplicateTargets(t *testing.T) {
 	// Setup: zone with two A records with SAME content (duplicate targets)
+	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 
@@ -468,12 +471,13 @@ func TestApplyChanges_NoChanges(t *testing.T) {
 
 // TestApplyChanges_Delete verifies delete operations (from glesys)
 func TestApplyChanges_Delete(t *testing.T) {
+	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "api", Type: "A", Content: "2.2.2.2", TTL: 300},
-			{ID: 103, ZoneID: 1, Name: "@", Type: "CNAME", Content: "www.example.com", TTL: 300},
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "api.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: 103, ZoneID: 1, Name: "example.com", Type: "CNAME", Content: "www.example.com", TTL: 300},
 		},
 	}
 
@@ -530,10 +534,11 @@ func TestApplyChanges_Delete(t *testing.T) {
 
 // TestApplyChanges_DryRun verifies dry-run mode doesn't make API calls (from netcup)
 func TestApplyChanges_DryRun(t *testing.T) {
+	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 
@@ -584,16 +589,17 @@ func TestApplyChanges_DryRun(t *testing.T) {
 
 // TestRecords_FiltersByDomain verifies domain filtering (from netcup)
 func TestRecords_FiltersByDomain(t *testing.T) {
+	// PowerAdmin API returns full DNS names
 	zones := []Zone{
 		{ID: 1, Name: "example.com"},
 		{ID: 2, Name: "other.org"},
 	}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 		2: {
-			{ID: 201, ZoneID: 2, Name: "www", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: 201, ZoneID: 2, Name: "www.other.org", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 
@@ -648,13 +654,14 @@ func TestRecords_EmptyZone(t *testing.T) {
 
 // TestRecords_SkipsSOAandNS verifies SOA and apex NS records are skipped
 func TestRecords_SkipsSOAandNS(t *testing.T) {
+	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
 			{ID: 101, ZoneID: 1, Name: "example.com", Type: "SOA", Content: "ns1.example.com hostmaster.example.com 2021010101 3600 600 604800 86400", TTL: 3600},
 			{ID: 102, ZoneID: 1, Name: "example.com", Type: "NS", Content: "ns1.example.com", TTL: 3600},
-			{ID: 103, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 104, ZoneID: 1, Name: "sub", Type: "NS", Content: "ns1.sub.example.com", TTL: 3600}, // delegated NS, should be included
+			{ID: 103, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 104, ZoneID: 1, Name: "sub.example.com", Type: "NS", Content: "ns1.sub.example.com", TTL: 3600}, // delegated NS, should be included
 		},
 	}
 
@@ -749,11 +756,12 @@ func TestFindZoneForEndpoint_NoMatch(t *testing.T) {
 
 // TestRecords_MXWithPriority verifies MX records include priority in target
 func TestRecords_MXWithPriority(t *testing.T) {
+	// PowerAdmin API returns full DNS names
 	priority := 10
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "@", Type: "MX", Content: "mail.example.com", TTL: 300, Priority: &priority},
+			{ID: 101, ZoneID: 1, Name: "example.com", Type: "MX", Content: "mail.example.com", TTL: 300, Priority: &priority},
 		},
 	}
 
@@ -784,11 +792,12 @@ func TestRecords_MXWithPriority(t *testing.T) {
 
 // TestApplyChanges_MixedOperations verifies create, update, and delete in single call
 func TestApplyChanges_MixedOperations(t *testing.T) {
+	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "old", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "update", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: 101, ZoneID: 1, Name: "old.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "update.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 

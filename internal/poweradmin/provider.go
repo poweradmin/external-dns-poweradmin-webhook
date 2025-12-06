@@ -211,8 +211,6 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 		return fmt.Errorf("failed to list records for zone %s: %w", zone.Name, err)
 	}
 
-	recordName := extractRecordName(oldEp.DNSName, zone.Name)
-
 	// Track which record IDs have already been updated to handle duplicate targets
 	updatedRecordIDs := make(map[int]bool)
 
@@ -230,7 +228,8 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 				continue
 			}
 
-			if record.Name == recordName && record.Type == oldEp.RecordType && record.Content == content {
+			// PowerAdmin API returns full DNS names, so compare against oldEp.DNSName
+			if record.Name == oldEp.DNSName && record.Type == oldEp.RecordType && record.Content == content {
 				// Found matching record, update it with corresponding new value
 				newContent, newPriority := parseTarget(newEp.RecordType, newTarget)
 
@@ -282,14 +281,13 @@ func (p *Provider) deleteRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 		return fmt.Errorf("failed to list records for zone %s: %w", zone.Name, err)
 	}
 
-	recordName := extractRecordName(ep.DNSName, zone.Name)
-
 	for _, target := range ep.Targets {
 		content, _ := parseTarget(ep.RecordType, target)
 
 		for _, record := range records {
-			if record.Name == recordName && record.Type == ep.RecordType && record.Content == content {
-				log.Infof("Deleting record %d: %s %s %s", record.ID, recordName, ep.RecordType, content)
+			// PowerAdmin API returns full DNS names, so compare against ep.DNSName
+			if record.Name == ep.DNSName && record.Type == ep.RecordType && record.Content == content {
+				log.Infof("Deleting record %d: %s %s %s", record.ID, ep.DNSName, ep.RecordType, content)
 
 				if p.dryRun {
 					log.Info("Dry run: skipping actual deletion")
