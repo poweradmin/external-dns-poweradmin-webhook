@@ -432,3 +432,402 @@ func TestAdjustEndpoints(t *testing.T) {
 		t.Errorf("Expected %d endpoints, got %d", len(endpoints), len(adjusted))
 	}
 }
+
+// TestApplyChanges_NoChanges verifies that empty changes don't cause errors (from netcup)
+func TestApplyChanges_NoChanges(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{1: {}}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	// Empty changes
+	changes := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+	}
+
+	err = provider.ApplyChanges(context.Background(), changes)
+	if err != nil {
+		t.Errorf("ApplyChanges with no changes should not error: %v", err)
+	}
+
+	// Verify no API calls were made
+	if len(ms.createCalls) != 0 || len(ms.updateCalls) != 0 || len(ms.deleteCalls) != 0 {
+		t.Error("Expected no API calls for empty changes")
+	}
+}
+
+// TestApplyChanges_Delete verifies delete operations (from glesys)
+func TestApplyChanges_Delete(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "api", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: 103, ZoneID: 1, Name: "@", Type: "CNAME", Content: "www.example.com", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	changes := &plan.Changes{
+		Delete: []*endpoint.Endpoint{
+			{
+				DNSName:    "www.example.com",
+				RecordType: "A",
+				Targets:    endpoint.Targets{"1.1.1.1"},
+			},
+			{
+				DNSName:    "example.com",
+				RecordType: "CNAME",
+				Targets:    endpoint.Targets{"www.example.com"},
+			},
+		},
+	}
+
+	err = provider.ApplyChanges(context.Background(), changes)
+	if err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+
+	// Verify: should have 2 delete calls
+	if len(ms.deleteCalls) != 2 {
+		t.Errorf("Expected 2 delete calls, got %d", len(ms.deleteCalls))
+	}
+
+	// Verify correct record IDs were deleted
+	deletedIDs := make(map[int]bool)
+	for _, call := range ms.deleteCalls {
+		deletedIDs[call.recordID] = true
+	}
+
+	if !deletedIDs[101] {
+		t.Error("Expected record 101 (www A) to be deleted")
+	}
+	if !deletedIDs[103] {
+		t.Error("Expected record 103 (@ CNAME) to be deleted")
+	}
+	if deletedIDs[102] {
+		t.Error("Record 102 (api A) should NOT be deleted")
+	}
+}
+
+// TestApplyChanges_DryRun verifies dry-run mode doesn't make API calls (from netcup)
+func TestApplyChanges_DryRun(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	// Enable dry-run mode
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, true)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	changes := &plan.Changes{
+		Create: []*endpoint.Endpoint{
+			{
+				DNSName:    "new.example.com",
+				RecordType: "A",
+				Targets:    endpoint.Targets{"3.3.3.3"},
+				RecordTTL:  300,
+			},
+		},
+		Delete: []*endpoint.Endpoint{
+			{
+				DNSName:    "www.example.com",
+				RecordType: "A",
+				Targets:    endpoint.Targets{"1.1.1.1"},
+			},
+		},
+	}
+
+	err = provider.ApplyChanges(context.Background(), changes)
+	if err != nil {
+		t.Fatalf("ApplyChanges in dry-run mode failed: %v", err)
+	}
+
+	// Verify no actual API calls were made (only zone list is called)
+	if len(ms.createCalls) != 0 {
+		t.Errorf("Expected 0 create calls in dry-run, got %d", len(ms.createCalls))
+	}
+	if len(ms.deleteCalls) != 0 {
+		t.Errorf("Expected 0 delete calls in dry-run, got %d", len(ms.deleteCalls))
+	}
+	if len(ms.updateCalls) != 0 {
+		t.Errorf("Expected 0 update calls in dry-run, got %d", len(ms.updateCalls))
+	}
+}
+
+// TestRecords_FiltersByDomain verifies domain filtering (from netcup)
+func TestRecords_FiltersByDomain(t *testing.T) {
+	zones := []Zone{
+		{ID: 1, Name: "example.com"},
+		{ID: 2, Name: "other.org"},
+	}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
+		},
+		2: {
+			{ID: 201, ZoneID: 2, Name: "www", Type: "A", Content: "2.2.2.2", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	// Only filter for example.com
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	// Should only return records from example.com
+	if len(endpoints) != 1 {
+		t.Errorf("Expected 1 endpoint, got %d", len(endpoints))
+	}
+
+	if len(endpoints) > 0 && endpoints[0].DNSName != "www.example.com" {
+		t.Errorf("Expected www.example.com, got %s", endpoints[0].DNSName)
+	}
+}
+
+// TestRecords_EmptyZone verifies handling of zones with no records
+func TestRecords_EmptyZone(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{1: {}}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	if len(endpoints) != 0 {
+		t.Errorf("Expected 0 endpoints for empty zone, got %d", len(endpoints))
+	}
+}
+
+// TestRecords_SkipsSOAandNS verifies SOA and apex NS records are skipped
+func TestRecords_SkipsSOAandNS(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "example.com", Type: "SOA", Content: "ns1.example.com hostmaster.example.com 2021010101 3600 600 604800 86400", TTL: 3600},
+			{ID: 102, ZoneID: 1, Name: "example.com", Type: "NS", Content: "ns1.example.com", TTL: 3600},
+			{ID: 103, ZoneID: 1, Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 104, ZoneID: 1, Name: "sub", Type: "NS", Content: "ns1.sub.example.com", TTL: 3600}, // delegated NS, should be included
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	// Should only return www A record and sub NS record (not SOA, not apex NS)
+	if len(endpoints) != 2 {
+		t.Errorf("Expected 2 endpoints (www A + sub NS), got %d", len(endpoints))
+	}
+
+	for _, ep := range endpoints {
+		if ep.RecordType == "SOA" {
+			t.Error("SOA record should be skipped")
+		}
+		if ep.RecordType == "NS" && ep.DNSName == "example.com" {
+			t.Error("Apex NS record should be skipped")
+		}
+	}
+}
+
+// TestFindZoneForEndpoint verifies longest suffix matching (from netcup)
+func TestFindZoneForEndpoint(t *testing.T) {
+	zones := []Zone{
+		{ID: 1, Name: "example.com"},
+		{ID: 2, Name: "sub.example.com"},
+	}
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com", "sub.example.com"})
+	provider, err := NewProvider("http://example.com", "api-key", domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	// Populate zone cache
+	for _, z := range zones {
+		provider.zoneCache[z.Name] = z
+	}
+
+	tests := []struct {
+		dnsName      string
+		expectedZone string
+	}{
+		{"www.example.com", "example.com"},
+		{"api.example.com", "example.com"},
+		{"test.sub.example.com", "sub.example.com"},
+		{"deep.test.sub.example.com", "sub.example.com"},
+	}
+
+	for _, tt := range tests {
+		ep := &endpoint.Endpoint{DNSName: tt.dnsName}
+		zone, err := provider.findZoneForEndpoint(ep)
+		if err != nil {
+			t.Errorf("findZoneForEndpoint(%s) error: %v", tt.dnsName, err)
+			continue
+		}
+		if zone.Name != tt.expectedZone {
+			t.Errorf("findZoneForEndpoint(%s) = %s, want %s", tt.dnsName, zone.Name, tt.expectedZone)
+		}
+	}
+}
+
+// TestFindZoneForEndpoint_NoMatch verifies error when no zone matches
+func TestFindZoneForEndpoint_NoMatch(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider("http://example.com", "api-key", domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	provider.zoneCache["example.com"] = zones[0]
+
+	ep := &endpoint.Endpoint{DNSName: "www.other.org"}
+	_, err = provider.findZoneForEndpoint(ep)
+	if err == nil {
+		t.Error("Expected error for non-matching domain")
+	}
+}
+
+// TestRecords_MXWithPriority verifies MX records include priority in target
+func TestRecords_MXWithPriority(t *testing.T) {
+	priority := 10
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "@", Type: "MX", Content: "mail.example.com", TTL: 300, Priority: &priority},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	if len(endpoints) != 1 {
+		t.Fatalf("Expected 1 endpoint, got %d", len(endpoints))
+	}
+
+	// MX target should include priority
+	expected := "10 mail.example.com"
+	if endpoints[0].Targets[0] != expected {
+		t.Errorf("Expected MX target %q, got %q", expected, endpoints[0].Targets[0])
+	}
+}
+
+// TestApplyChanges_MixedOperations verifies create, update, and delete in single call
+func TestApplyChanges_MixedOperations(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "old", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "update", Type: "A", Content: "2.2.2.2", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	changes := &plan.Changes{
+		Create: []*endpoint.Endpoint{
+			{DNSName: "new.example.com", RecordType: "A", Targets: endpoint.Targets{"3.3.3.3"}, RecordTTL: 300},
+		},
+		UpdateOld: []*endpoint.Endpoint{
+			{DNSName: "update.example.com", RecordType: "A", Targets: endpoint.Targets{"2.2.2.2"}},
+		},
+		UpdateNew: []*endpoint.Endpoint{
+			{DNSName: "update.example.com", RecordType: "A", Targets: endpoint.Targets{"4.4.4.4"}, RecordTTL: 300},
+		},
+		Delete: []*endpoint.Endpoint{
+			{DNSName: "old.example.com", RecordType: "A", Targets: endpoint.Targets{"1.1.1.1"}},
+		},
+	}
+
+	err = provider.ApplyChanges(context.Background(), changes)
+	if err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+
+	if len(ms.createCalls) != 1 {
+		t.Errorf("Expected 1 create call, got %d", len(ms.createCalls))
+	}
+	if len(ms.updateCalls) != 1 {
+		t.Errorf("Expected 1 update call, got %d", len(ms.updateCalls))
+	}
+	if len(ms.deleteCalls) != 1 {
+		t.Errorf("Expected 1 delete call, got %d", len(ms.deleteCalls))
+	}
+}
