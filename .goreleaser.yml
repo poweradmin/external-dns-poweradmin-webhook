@@ -19,7 +19,8 @@ builds:
 archives:
   - id: archive
     name_template: "{{ .ProjectName }}-{{ .Tag }}-{{ .Os }}-{{ .Arch }}"
-    format: tar.gz
+    formats:
+      - tar.gz
 
 source:
   enabled: true
@@ -46,6 +47,7 @@ dockers:
   - use: buildx
     goos: linux
     goarch: amd64
+    dockerfile: Dockerfile.goreleaser
     image_templates:
       - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:latest-amd64"
       - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-amd64"
@@ -62,6 +64,7 @@ dockers:
   - use: buildx
     goos: linux
     goarch: arm64
+    dockerfile: Dockerfile.goreleaser
     image_templates:
       - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:latest-arm64"
       - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-arm64"
@@ -78,6 +81,7 @@ dockers:
   - use: buildx
     goos: linux
     goarch: amd64
+    dockerfile: Dockerfile.goreleaser
     image_templates:
       - "docker.io/poweradmin/external-dns-poweradmin-webhook:latest-amd64"
       - "docker.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-amd64"
@@ -94,6 +98,7 @@ dockers:
   - use: buildx
     goos: linux
     goarch: arm64
+    dockerfile: Dockerfile.goreleaser
     image_templates:
       - "docker.io/poweradmin/external-dns-poweradmin-webhook:latest-arm64"
       - "docker.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-arm64"

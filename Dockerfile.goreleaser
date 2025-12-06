@@ -1,0 +1,11 @@
+FROM alpine:3.23
+
+RUN apk --no-cache add ca-certificates
+
+# Create non-root user
+RUN adduser -D -u 1000 webhook
+USER webhook
+
+COPY external-dns-poweradmin-webhook /usr/local/bin/
+
+ENTRYPOINT ["external-dns-poweradmin-webhook"]
