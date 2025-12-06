@@ -213,24 +213,23 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 
 	recordName := extractRecordName(oldEp.DNSName, zone.Name)
 
-	// Build a map of old targets to new targets for proper matching
-	// Assumes oldEp.Targets and newEp.Targets are aligned by index
-	oldToNewTarget := make(map[string]string)
-	for i, oldTarget := range oldEp.Targets {
-		if i < len(newEp.Targets) {
-			oldToNewTarget[oldTarget] = newEp.Targets[i]
-		}
-	}
+	// Track which record IDs have already been updated to handle duplicate targets
+	updatedRecordIDs := make(map[int]bool)
 
-	// Find matching records to update
-	for _, target := range oldEp.Targets {
-		content, _ := parseTarget(oldEp.RecordType, target)
-		newTarget, exists := oldToNewTarget[target]
-		if !exists {
+	// Process updates by index to preserve multiplicity for duplicate targets
+	for i, target := range oldEp.Targets {
+		if i >= len(newEp.Targets) {
 			continue
 		}
+		newTarget := newEp.Targets[i]
+		content, _ := parseTarget(oldEp.RecordType, target)
 
 		for _, record := range records {
+			// Skip if already updated this record
+			if updatedRecordIDs[record.ID] {
+				continue
+			}
+
 			if record.Name == recordName && record.Type == oldEp.RecordType && record.Content == content {
 				// Found matching record, update it with corresponding new value
 				newContent, newPriority := parseTarget(newEp.RecordType, newTarget)
@@ -251,14 +250,18 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 
 				log.Infof("Updating record %d: %s -> %s", record.ID, content, newContent)
 
+				// Mark this record as updated before making the API call
+				updatedRecordIDs[record.ID] = true
+
 				if p.dryRun {
 					log.Info("Dry run: skipping actual update")
-					continue
+					break // Move to next target
 				}
 
 				if _, err := p.client.UpdateRecord(ctx, zone.ID, record.ID, req); err != nil {
 					return err
 				}
+				break // Found and updated matching record, move to next target
 			}
 		}
 	}
