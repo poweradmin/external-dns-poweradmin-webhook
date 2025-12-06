@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/poweradmin/external-dns-poweradmin-plugin/compare/v1.0.2...v1.0.3) (2025-12-06)
+
+
+### Bug Fixes
+
+* switch to distroless base image for smaller footprint ([b50ad7f](https://github.com/poweradmin/external-dns-poweradmin-plugin/commit/b50ad7f84b3c4d78c7fdf5cd6d34e47827f9894c))
+
 ## [1.0.2](https://github.com/poweradmin/external-dns-poweradmin-plugin/compare/v1.0.1...v1.0.2) (2025-12-06)
 
 
