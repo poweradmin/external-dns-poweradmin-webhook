@@ -1,0 +1,161 @@
+---
+version: 2
+
+builds:
+  - binary: external-dns-poweradmin-webhook
+    main: ./cmd/webhook
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X 'main.Version={{ .Tag }}'
+
+archives:
+  - id: archive
+    name_template: "{{ .ProjectName }}-{{ .Tag }}-{{ .Os }}-{{ .Arch }}"
+    format: tar.gz
+
+source:
+  enabled: true
+
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - --yes
+      - "--output-certificate=${certificate}"
+      - "--bundle=${signature}"
+      - "${artifact}"
+    artifacts: checksum
+    output: true
+
+sboms:
+  - artifacts: archive
+
+dockers:
+  # GitHub Container Registry - amd64
+  - use: buildx
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:latest-amd64"
+      - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-amd64"
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+
+  # GitHub Container Registry - arm64
+  - use: buildx
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:latest-arm64"
+      - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-arm64"
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+
+  # Docker Hub - amd64
+  - use: buildx
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "docker.io/poweradmin/external-dns-poweradmin-webhook:latest-amd64"
+      - "docker.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-amd64"
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+
+  # Docker Hub - arm64
+  - use: buildx
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "docker.io/poweradmin/external-dns-poweradmin-webhook:latest-arm64"
+      - "docker.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-arm64"
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+
+docker_manifests:
+  # GitHub Container Registry
+  - name_template: "ghcr.io/poweradmin/external-dns-poweradmin-webhook:latest"
+    image_templates:
+      - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:latest-amd64"
+      - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:latest-arm64"
+
+  - name_template: "ghcr.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-amd64"
+      - "ghcr.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-arm64"
+
+  # Docker Hub
+  - name_template: "docker.io/poweradmin/external-dns-poweradmin-webhook:latest"
+    image_templates:
+      - "docker.io/poweradmin/external-dns-poweradmin-webhook:latest-amd64"
+      - "docker.io/poweradmin/external-dns-poweradmin-webhook:latest-arm64"
+
+  - name_template: "docker.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}"
+    image_templates:
+      - "docker.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-amd64"
+      - "docker.io/poweradmin/external-dns-poweradmin-webhook:{{ .Tag }}-arm64"
+
+docker_signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    artifacts: manifests
+    output: true
+    args:
+      - sign
+      - --yes
+      - "${artifact}"
+
+changelog:
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^ci:"
+  groups:
+    - title: Features
+      regexp: "^.*feat.*:.*$"
+      order: 0
+    - title: Bug Fixes
+      regexp: "^.*fix.*:.*$"
+      order: 1
+    - title: Other
+      order: 999
+
+release:
+  prerelease: auto
