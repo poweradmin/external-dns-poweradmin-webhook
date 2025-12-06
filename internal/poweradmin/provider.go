@@ -20,13 +20,13 @@ const (
 type Provider struct {
 	provider.BaseProvider
 	client       *Client
-	domainFilter endpoint.DomainFilter
+	domainFilter *endpoint.DomainFilter
 	dryRun       bool
 	zoneCache    map[string]Zone // map[zoneName]Zone
 }
 
 // NewProvider creates a new PowerAdmin provider
-func NewProvider(baseURL, apiKey string, domainFilter endpoint.DomainFilter, dryRun bool) (*Provider, error) {
+func NewProvider(baseURL, apiKey string, domainFilter *endpoint.DomainFilter, dryRun bool) (*Provider, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("PowerAdmin base URL is required")
 	}
@@ -155,7 +155,7 @@ func (p *Provider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.
 
 // GetDomainFilter returns the domain filter for this provider
 func (p *Provider) GetDomainFilter() endpoint.DomainFilterInterface {
-	return &p.domainFilter
+	return p.domainFilter
 }
 
 // createRecord creates a new DNS record
