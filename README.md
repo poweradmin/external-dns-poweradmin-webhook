@@ -1,10 +1,10 @@
 # external-dns-poweradmin-webhook
 
-A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external-dns) that integrates with [PowerAdmin](https://github.com/poweradmin/poweradmin) DNS management system using the v2 API.
+A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external-dns) that integrates with [PowerAdmin](https://github.com/poweradmin/poweradmin) DNS management system.
 
 ## Features
 
-- Full integration with PowerAdmin v2 API
+- Full integration with PowerAdmin API (v1 and v2 supported)
 - Supports A, AAAA, CNAME, TXT, MX, NS, SRV, PTR, and CAA record types
 - Domain filtering support
 - Dry-run mode for testing
@@ -13,7 +13,7 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 
 ## Requirements
 
-- PowerAdmin with v2 API enabled
+- PowerAdmin with API enabled (v1 or v2)
 - API key with appropriate permissions
 - Kubernetes cluster (for deployment)
 - ExternalDNS v0.20.0 or later
@@ -26,6 +26,7 @@ The webhook is configured via environment variables:
 |----------|----------|---------|-------------|
 | `POWERADMIN_URL` | Yes | - | Base URL of your PowerAdmin instance |
 | `POWERADMIN_API_KEY` | Yes | - | API key for authentication |
+| `POWERADMIN_API_VERSION` | No | `v2` | API version to use (`v1` or `v2`) |
 | `DOMAIN_FILTER` | No | - | Comma-separated list of domains to manage |
 | `EXCLUDE_DOMAIN_FILTER` | No | - | Comma-separated list of domains to exclude |
 | `REGEXP_DOMAIN_FILTER` | No | - | Regex pattern for domain filtering |
@@ -126,15 +127,28 @@ export DOMAIN_FILTER=example.com
 
 ## PowerAdmin API Requirements
 
-The webhook uses the PowerAdmin v2 API. Ensure your PowerAdmin instance has:
+The webhook supports both PowerAdmin API v1 and v2. By default, v2 is used. To use v1, set `POWERADMIN_API_VERSION=v1`.
 
-1. API v2 enabled
+Ensure your PowerAdmin instance has:
+
+1. API enabled (v1 or v2)
 2. An API key created with permissions to:
    - List zones
    - List records
    - Create records
    - Update records
    - Delete records
+
+### API Version Differences
+
+| Feature | v1 | v2 |
+|---------|----|----|
+| Basic CRUD operations | Yes | Yes |
+| RRSet management | No | Yes |
+| Bulk operations | No | Yes |
+| PTR auto-creation | No | Yes |
+
+For most use cases, both versions work identically. Use v2 (default) unless you have a specific reason to use v1.
 
 ## Development
 

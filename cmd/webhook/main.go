@@ -50,8 +50,9 @@ type Config struct {
 	ServerWriteTimeout time.Duration `env:"SERVER_WRITE_TIMEOUT" envDefault:"10s"`
 
 	// PowerAdmin configuration
-	PowerAdminURL    string `env:"POWERADMIN_URL,required"`
-	PowerAdminAPIKey string `env:"POWERADMIN_API_KEY,required"`
+	PowerAdminURL        string `env:"POWERADMIN_URL,required"`
+	PowerAdminAPIKey     string `env:"POWERADMIN_API_KEY,required"`
+	PowerAdminAPIVersion string `env:"POWERADMIN_API_VERSION" envDefault:"v2"`
 
 	// Domain filter configuration
 	DomainFilter        []string `env:"DOMAIN_FILTER" envSeparator:","`
@@ -99,10 +100,18 @@ func main() {
 		}
 	}
 
+	// Parse and validate API version
+	apiVersion := poweradmin.APIVersion(cfg.PowerAdminAPIVersion)
+	if apiVersion != poweradmin.APIVersionV1 && apiVersion != poweradmin.APIVersionV2 {
+		log.Fatalf("Invalid API version %s, must be 'v1' or 'v2'", cfg.PowerAdminAPIVersion)
+	}
+	log.Infof("Using PowerAdmin API version: %s", apiVersion)
+
 	// Create provider
 	provider, err := poweradmin.NewProvider(
 		cfg.PowerAdminURL,
 		cfg.PowerAdminAPIKey,
+		apiVersion,
 		domainFilter,
 		cfg.DryRun,
 	)

@@ -100,6 +100,8 @@ spec:
               value: "0.0.0.0"
             - name: METRICS_PORT
               value: "8080"
+            - name: POWERADMIN_API_VERSION
+              value: "v2"  # API version: v1 or v2 (default: v2)
             - name: DOMAIN_FILTER
               value: "example.com"  # Replace with your domain(s)
             - name: LOG_LEVEL

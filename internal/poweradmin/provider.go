@@ -26,7 +26,7 @@ type Provider struct {
 }
 
 // NewProvider creates a new PowerAdmin provider
-func NewProvider(baseURL, apiKey string, domainFilter *endpoint.DomainFilter, dryRun bool) (*Provider, error) {
+func NewProvider(baseURL, apiKey string, apiVersion APIVersion, domainFilter *endpoint.DomainFilter, dryRun bool) (*Provider, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("PowerAdmin base URL is required")
 	}
@@ -34,7 +34,7 @@ func NewProvider(baseURL, apiKey string, domainFilter *endpoint.DomainFilter, dr
 		return nil, fmt.Errorf("PowerAdmin API key is required")
 	}
 
-	client := NewClient(baseURL, apiKey)
+	client := NewClient(baseURL, apiKey, apiVersion)
 
 	return &Provider{
 		client:       client,
