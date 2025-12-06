@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/poweradmin/external-dns-poweradmin-plugin/compare/v1.0.0...v1.0.1) (2025-12-06)
+
+
+### Bug Fixes
+
+* add cmd/webhook/main.go and fix .gitignore patterns ([cf9408a](https://github.com/poweradmin/external-dns-poweradmin-plugin/commit/cf9408a3bfcc08dbefff570fad5dfc1b37c67d7b))
+
 ## 1.0.0 (2025-12-06)
 
 
