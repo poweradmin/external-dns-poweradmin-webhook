@@ -13,6 +13,9 @@ import (
 	"sigs.k8s.io/external-dns/plan"
 )
 
+// Note: Test records use full DNS names (e.g., "www.example.com") to match
+// the PowerAdmin API response format.
+
 // mockServer creates a test server that tracks API calls
 type mockServer struct {
 	server      *httptest.Server
@@ -131,8 +134,6 @@ func (ms *mockServer) Close() {
 }
 
 func TestUpdateRecord_MultipleTargets(t *testing.T) {
-	// Setup: zone with two A records for same hostname
-	// PowerAdmin API returns full DNS names, so records use "www.example.com" not "www"
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
@@ -187,8 +188,6 @@ func TestUpdateRecord_MultipleTargets(t *testing.T) {
 }
 
 func TestUpdateRecord_DuplicateTargets(t *testing.T) {
-	// Setup: zone with two A records with SAME content (duplicate targets)
-	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
@@ -471,7 +470,6 @@ func TestApplyChanges_NoChanges(t *testing.T) {
 
 // TestApplyChanges_Delete verifies delete operations
 func TestApplyChanges_Delete(t *testing.T) {
-	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
@@ -534,7 +532,6 @@ func TestApplyChanges_Delete(t *testing.T) {
 
 // TestApplyChanges_DryRun verifies dry-run mode doesn't make API calls
 func TestApplyChanges_DryRun(t *testing.T) {
-	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
@@ -589,7 +586,6 @@ func TestApplyChanges_DryRun(t *testing.T) {
 
 // TestRecords_FiltersByDomain verifies domain filtering
 func TestRecords_FiltersByDomain(t *testing.T) {
-	// PowerAdmin API returns full DNS names
 	zones := []Zone{
 		{ID: 1, Name: "example.com"},
 		{ID: 2, Name: "other.org"},
@@ -654,7 +650,6 @@ func TestRecords_EmptyZone(t *testing.T) {
 
 // TestRecords_SkipsSOAandNS verifies SOA and apex NS records are skipped
 func TestRecords_SkipsSOAandNS(t *testing.T) {
-	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
@@ -756,7 +751,6 @@ func TestFindZoneForEndpoint_NoMatch(t *testing.T) {
 
 // TestRecords_MXWithPriority verifies MX records include priority in target
 func TestRecords_MXWithPriority(t *testing.T) {
-	// PowerAdmin API returns full DNS names
 	priority := 10
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
@@ -792,7 +786,6 @@ func TestRecords_MXWithPriority(t *testing.T) {
 
 // TestApplyChanges_MixedOperations verifies create, update, and delete in single call
 func TestApplyChanges_MixedOperations(t *testing.T) {
-	// PowerAdmin API returns full DNS names
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
