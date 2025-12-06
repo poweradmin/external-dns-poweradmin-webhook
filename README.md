@@ -139,17 +139,6 @@ Ensure your PowerAdmin instance has:
    - Update records
    - Delete records
 
-### API Version Differences
-
-| Feature | v1 | v2 |
-|---------|----|----|
-| Basic CRUD operations | Yes | Yes |
-| RRSet management | No | Yes |
-| Bulk operations | No | Yes |
-| PTR auto-creation | No | Yes |
-
-For most use cases, both versions work identically. Use v2 (default) unless you have a specific reason to use v1.
-
 ## Development
 
 ### Project Structure
