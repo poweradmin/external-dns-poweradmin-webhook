@@ -213,14 +213,27 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 
 	recordName := extractRecordName(oldEp.DNSName, zone.Name)
 
+	// Build a map of old targets to new targets for proper matching
+	// Assumes oldEp.Targets and newEp.Targets are aligned by index
+	oldToNewTarget := make(map[string]string)
+	for i, oldTarget := range oldEp.Targets {
+		if i < len(newEp.Targets) {
+			oldToNewTarget[oldTarget] = newEp.Targets[i]
+		}
+	}
+
 	// Find matching records to update
 	for _, target := range oldEp.Targets {
 		content, _ := parseTarget(oldEp.RecordType, target)
+		newTarget, exists := oldToNewTarget[target]
+		if !exists {
+			continue
+		}
 
 		for _, record := range records {
 			if record.Name == recordName && record.Type == oldEp.RecordType && record.Content == content {
-				// Found matching record, update it with new values
-				newContent, newPriority := parseTarget(newEp.RecordType, newEp.Targets[0])
+				// Found matching record, update it with corresponding new value
+				newContent, newPriority := parseTarget(newEp.RecordType, newTarget)
 
 				ttl := DefaultTTL
 				if newEp.RecordTTL.IsConfigured() {
