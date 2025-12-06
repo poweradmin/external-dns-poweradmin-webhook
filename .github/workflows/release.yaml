@@ -77,12 +77,3 @@ jobs:
           CI_COMMIT_TIMESTAMP: ${{ github.event.repository.updated_at }}
           CI_COMMIT_SHA: ${{ github.sha }}
           CI_COMMIT_TAG: ${{ needs.release.outputs.tag_name }}
-
-      - name: Update Docker Hub Description
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: poweradmin/external-dns-poweradmin-webhook
-          short-description: "ExternalDNS webhook provider for PowerAdmin DNS"
-          readme-filepath: ./README.md
