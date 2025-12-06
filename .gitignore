@@ -35,5 +35,5 @@ go.work.sum
 *~
 
 # Binary
-external-dns-poweradmin-webhook
-webhook
+/external-dns-poweradmin-webhook
+/webhook
