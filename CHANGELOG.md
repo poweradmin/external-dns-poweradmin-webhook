@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.0.3...v1.1.0) (2025-12-06)
+
+
+### Features
+
+* enable backward compatibility with PowerAdmin API v1 ([abf2d5f](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/abf2d5f3d4f1555716d490e96555b53383aed5ad))
+
 ## [1.0.3](https://github.com/poweradmin/external-dns-poweradmin-plugin/compare/v1.0.2...v1.0.3) (2025-12-06)
 
 
