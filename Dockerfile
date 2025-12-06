@@ -16,7 +16,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X main.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" -o external-dns-poweradmin-webhook ./cmd/webhook
 
 # Runtime stage
-FROM alpine:3.20
+FROM alpine:3.23
 
 RUN apk --no-cache add ca-certificates
 
