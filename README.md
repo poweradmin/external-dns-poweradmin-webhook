@@ -16,7 +16,7 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 - PowerAdmin with v2 API enabled
 - API key with appropriate permissions
 - Kubernetes cluster (for deployment)
-- ExternalDNS v0.14.0 or later
+- ExternalDNS v0.20.0 or later
 
 ## Configuration
 
@@ -56,7 +56,18 @@ make docker-build
 
 ### Docker
 
+Pre-built images are available from:
+- GitHub Container Registry: `ghcr.io/poweradmin/external-dns-poweradmin-webhook`
+- Docker Hub: `docker.io/poweradmin/external-dns-poweradmin-webhook`
+
 ```bash
+# Pull from GitHub Container Registry
+docker pull ghcr.io/poweradmin/external-dns-poweradmin-webhook:latest
+
+# Or pull from Docker Hub
+docker pull poweradmin/external-dns-poweradmin-webhook:latest
+
+# Build locally
 docker build -t poweradmin/external-dns-poweradmin-webhook:latest .
 ```
 
@@ -137,7 +148,8 @@ The webhook uses the PowerAdmin v2 API. Ensure your PowerAdmin instance has:
 ├── internal/
 │   └── poweradmin/
 │       ├── client.go         # PowerAdmin API client
-│       └── provider.go       # ExternalDNS provider implementation
+│       ├── provider.go       # ExternalDNS provider implementation
+│       └── provider_test.go  # Provider tests
 ├── deploy/
 │   └── kubernetes/
 │       └── deployment.yaml   # Kubernetes deployment manifest
