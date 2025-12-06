@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/poweradmin/external-dns-poweradmin-plugin/compare/v1.0.1...v1.0.2) (2025-12-06)
+
+
+### Bug Fixes
+
+* add Dockerfile.goreleaser for GoReleaser builds ([eb1b9e8](https://github.com/poweradmin/external-dns-poweradmin-plugin/commit/eb1b9e8cd3ca6a86ed563b943be868d9c74617cf))
+
 ## [1.0.1](https://github.com/poweradmin/external-dns-poweradmin-plugin/compare/v1.0.0...v1.0.1) (2025-12-06)
 
 
