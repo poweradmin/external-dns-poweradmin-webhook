@@ -10,6 +10,29 @@ import (
 	"time"
 )
 
+// FlexBool is a bool type that can unmarshal from both JSON booleans and integers (0/1).
+// PowerAdmin API v1 and v2 return the disabled field as an integer.
+type FlexBool bool
+
+func (b *FlexBool) UnmarshalJSON(data []byte) error {
+	switch string(data) {
+	case "true", "1":
+		*b = true
+	case "false", "0":
+		*b = false
+	default:
+		return fmt.Errorf("FlexBool: cannot unmarshal %s", string(data))
+	}
+	return nil
+}
+
+func (b FlexBool) MarshalJSON() ([]byte, error) {
+	if b {
+		return []byte("true"), nil
+	}
+	return []byte("false"), nil
+}
+
 // APIVersion represents the PowerAdmin API version
 type APIVersion string
 
@@ -59,7 +82,7 @@ type Record struct {
 	Content  string `json:"content"`
 	TTL      int    `json:"ttl"`
 	Priority *int   `json:"priority,omitempty"`
-	Disabled bool   `json:"disabled"`
+	Disabled FlexBool `json:"disabled"`
 }
 
 // CreateRecordRequest represents the request body for creating a record
@@ -243,7 +266,6 @@ func (c *Client) CreateRecord(ctx context.Context, zoneID int, record CreateReco
 			return nil, fmt.Errorf("API returned error: %s", response.Message)
 		}
 		// Convert V1 response to Record
-		disabled := response.Data.Disabled != 0
 		return &Record{
 			ID:       response.Data.RecordID,
 			ZoneID:   zoneID,
@@ -252,7 +274,7 @@ func (c *Client) CreateRecord(ctx context.Context, zoneID int, record CreateReco
 			Content:  response.Data.Content,
 			TTL:      response.Data.TTL,
 			Priority: response.Data.Priority,
-			Disabled: disabled,
+			Disabled: FlexBool(response.Data.Disabled != 0),
 		}, nil
 	}
 
@@ -287,7 +309,6 @@ func (c *Client) UpdateRecord(ctx context.Context, zoneID, recordID int, record 
 			return nil, fmt.Errorf("API returned error: %s", response.Message)
 		}
 		// V1 doesn't return the updated record, construct from request
-		disabled := record.Disabled
 		return &Record{
 			ID:       recordID,
 			ZoneID:   zoneID,
@@ -296,7 +317,7 @@ func (c *Client) UpdateRecord(ctx context.Context, zoneID, recordID int, record 
 			Content:  record.Content,
 			TTL:      record.TTL,
 			Priority: record.Priority,
-			Disabled: disabled,
+			Disabled: FlexBool(record.Disabled),
 		}, nil
 	}
 
