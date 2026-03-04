@@ -92,6 +92,9 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 
 			// Handle MX records with priority
 			target := record.Content
+			if record.Type == "TXT" {
+				target = strings.Trim(target, "\"")
+			}
 			if record.Type == "MX" && record.Priority != nil {
 				target = fmt.Sprintf("%d %s", *record.Priority, record.Content)
 			}
@@ -229,7 +232,8 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 			}
 
 			// PowerAdmin API returns full DNS names, so compare against oldEp.DNSName
-			if record.Name == oldEp.DNSName && record.Type == oldEp.RecordType && record.Content == content {
+			// Normalize TXT content for comparison since API may return quoted or unquoted values
+			if record.Name == oldEp.DNSName && record.Type == oldEp.RecordType && normalizeTXTContent(record.Type, record.Content) == normalizeTXTContent(oldEp.RecordType, content) {
 				// Found matching record, update it with corresponding new value
 				newContent, newPriority := parseTarget(newEp.RecordType, newTarget)
 
@@ -286,7 +290,8 @@ func (p *Provider) deleteRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 
 		for _, record := range records {
 			// PowerAdmin API returns full DNS names, so compare against ep.DNSName
-			if record.Name == ep.DNSName && record.Type == ep.RecordType && record.Content == content {
+			// Normalize TXT content for comparison since API may return quoted or unquoted values
+			if record.Name == ep.DNSName && record.Type == ep.RecordType && normalizeTXTContent(record.Type, record.Content) == normalizeTXTContent(ep.RecordType, content) {
 				log.Infof("Deleting record %d: %s %s %s", record.ID, ep.DNSName, ep.RecordType, content)
 
 				if p.dryRun {
@@ -344,12 +349,22 @@ func parseTarget(recordType, target string) (content string, priority *int) {
 		}
 	}
 
-	// Strip surrounding quotes from TXT records
+	// Ensure TXT records are properly quoted for the PowerAdmin API
 	if recordType == "TXT" {
 		target = strings.Trim(target, "\"")
+		target = fmt.Sprintf("\"%s\"", target)
 	}
 
 	return target, nil
+}
+
+// normalizeTXTContent strips surrounding quotes from TXT content for comparison purposes.
+// Both the API response and endpoint targets may or may not have quotes.
+func normalizeTXTContent(recordType, content string) string {
+	if recordType == "TXT" {
+		return strings.Trim(content, "\"")
+	}
+	return content
 }
 
 // isSupportedRecordType checks if the record type is supported
