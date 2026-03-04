@@ -329,13 +329,19 @@ func TestParseTarget_MX(t *testing.T) {
 }
 
 func TestParseTarget_TXT(t *testing.T) {
+	// Input with quotes should be normalized and re-quoted
 	content, priority := parseTarget("TXT", "\"v=spf1 include:example.com ~all\"")
-
-	if content != "v=spf1 include:example.com ~all" {
-		t.Errorf("Expected unquoted content, got %q", content)
+	if content != "\"v=spf1 include:example.com ~all\"" {
+		t.Errorf("Expected quoted content, got %q", content)
 	}
 	if priority != nil {
 		t.Error("Expected nil priority for TXT record")
+	}
+
+	// Input without quotes should get quotes added
+	content2, _ := parseTarget("TXT", "v=spf1 include:example.com ~all")
+	if content2 != "\"v=spf1 include:example.com ~all\"" {
+		t.Errorf("Expected quoted content, got %q", content2)
 	}
 }
 
@@ -871,12 +877,40 @@ func newMockServerV1(zones []Zone, records map[int][]Record) *mockServer {
 
 		switch r.Method {
 		case http.MethodGet:
+			// V1 API returns disabled as integer (0/1), so we build raw JSON
+			// to simulate real API behavior instead of using RecordsResponse
+			// which would serialize FlexBool as a boolean.
 			if recs, ok := ms.records[zoneID]; ok {
-				resp := RecordsResponse{Success: true, Data: recs}
+				type v1Record struct {
+					ID       int    `json:"id"`
+					ZoneID   int    `json:"zone_id"`
+					Name     string `json:"name"`
+					Type     string `json:"type"`
+					Content  string `json:"content"`
+					TTL      int    `json:"ttl"`
+					Priority *int   `json:"priority,omitempty"`
+					Disabled int    `json:"disabled"`
+				}
+				var v1Recs []v1Record
+				for _, r := range recs {
+					d := 0
+					if r.Disabled {
+						d = 1
+					}
+					v1Recs = append(v1Recs, v1Record{
+						ID: r.ID, ZoneID: r.ZoneID, Name: r.Name,
+						Type: r.Type, Content: r.Content, TTL: r.TTL,
+						Priority: r.Priority, Disabled: d,
+					})
+				}
+				resp := struct {
+					Success bool       `json:"success"`
+					Message string     `json:"message"`
+					Data    []v1Record `json:"data"`
+				}{Success: true, Data: v1Recs}
 				_ = json.NewEncoder(w).Encode(resp)
 			} else {
-				resp := RecordsResponse{Success: true, Data: []Record{}}
-				_ = json.NewEncoder(w).Encode(resp)
+				w.Write([]byte(`{"success":true,"data":[]}`))
 			}
 
 		case http.MethodPost:
@@ -1089,5 +1123,183 @@ func TestAPIVersionDefault(t *testing.T) {
 	client := NewClient("http://example.com", "api-key", "")
 	if client.apiVersion != APIVersionV2 {
 		t.Errorf("Expected default API version to be V2, got %s", client.apiVersion)
+	}
+}
+
+// TestFlexBool_UnmarshalJSON verifies FlexBool handles both bool and int JSON values
+func TestFlexBool_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected FlexBool
+		wantErr  bool
+	}{
+		{"bool true", "true", FlexBool(true), false},
+		{"bool false", "false", FlexBool(false), false},
+		{"int 1", "1", FlexBool(true), false},
+		{"int 0", "0", FlexBool(false), false},
+		{"invalid", "\"yes\"", FlexBool(false), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var b FlexBool
+			err := json.Unmarshal([]byte(tt.input), &b)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("UnmarshalJSON(%s) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && b != tt.expected {
+				t.Errorf("UnmarshalJSON(%s) = %v, want %v", tt.input, b, tt.expected)
+			}
+		})
+	}
+}
+
+// TestRecords_TXTQuoting verifies TXT records are properly unquoted on read
+func TestRecords_TXTQuoting(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "example.com", Type: "TXT", Content: "\"v=spf1 include:example.com ~all\"", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "example.com", Type: "TXT", Content: "unquoted-value", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	if len(endpoints) != 2 {
+		t.Fatalf("Expected 2 endpoints, got %d", len(endpoints))
+	}
+
+	// Quoted TXT content should have quotes stripped
+	for _, ep := range endpoints {
+		target := ep.Targets[0]
+		if strings.HasPrefix(target, "\"") || strings.HasSuffix(target, "\"") {
+			t.Errorf("TXT target should be unquoted, got %q", target)
+		}
+	}
+}
+
+// TestV1API_ListRecords_DisabledAsInt verifies V1 records with int disabled field are parsed correctly
+func TestV1API_ListRecords_DisabledAsInt(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(false)},
+			{ID: 102, ZoneID: 1, Name: "disabled.example.com", Type: "A", Content: "2.2.2.2", TTL: 300, Disabled: FlexBool(true)},
+		},
+	}
+
+	ms := newMockServerV1(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV1, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	// The V1 mock returns disabled as int (0/1). This should parse without error.
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed (disabled as int should be handled): %v", err)
+	}
+
+	if len(endpoints) != 2 {
+		t.Errorf("Expected 2 endpoints, got %d", len(endpoints))
+	}
+}
+
+// TestUpdateRecord_TXTUnquotedContent verifies TXT update/delete works when API returns unquoted content
+func TestUpdateRecord_TXTUnquotedContent(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			// API returns unquoted TXT content
+			{ID: 101, ZoneID: 1, Name: "example.com", Type: "TXT", Content: "v=spf1 include:example.com ~all", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache["example.com"] = zones[0]
+
+	// external-dns stores unquoted targets (Records() strips quotes)
+	oldEp := &endpoint.Endpoint{
+		DNSName:    "example.com",
+		RecordType: "TXT",
+		Targets:    endpoint.Targets{"v=spf1 include:example.com ~all"},
+	}
+	newEp := &endpoint.Endpoint{
+		DNSName:    "example.com",
+		RecordType: "TXT",
+		Targets:    endpoint.Targets{"v=spf1 include:new.com ~all"},
+		RecordTTL:  300,
+	}
+
+	err = provider.updateRecord(context.Background(), oldEp, newEp)
+	if err != nil {
+		t.Fatalf("updateRecord failed: %v", err)
+	}
+
+	if len(ms.updateCalls) != 1 {
+		t.Fatalf("Expected 1 update call, got %d (TXT matching failed with unquoted API content)", len(ms.updateCalls))
+	}
+
+	// The content sent to the API should be quoted
+	if ms.updateCalls[0].request.Content != "\"v=spf1 include:new.com ~all\"" {
+		t.Errorf("Expected quoted content sent to API, got %q", ms.updateCalls[0].request.Content)
+	}
+}
+
+// TestDeleteRecord_TXTUnquotedContent verifies TXT delete works when API returns unquoted content
+func TestDeleteRecord_TXTUnquotedContent(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "example.com", Type: "TXT", Content: "v=spf1 include:example.com ~all", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache["example.com"] = zones[0]
+
+	err = provider.deleteRecord(context.Background(), &endpoint.Endpoint{
+		DNSName:    "example.com",
+		RecordType: "TXT",
+		Targets:    endpoint.Targets{"v=spf1 include:example.com ~all"},
+	})
+	if err != nil {
+		t.Fatalf("deleteRecord failed: %v", err)
+	}
+
+	if len(ms.deleteCalls) != 1 {
+		t.Fatalf("Expected 1 delete call, got %d (TXT matching failed with unquoted API content)", len(ms.deleteCalls))
 	}
 }
