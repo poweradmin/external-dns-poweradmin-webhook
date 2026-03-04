@@ -37,6 +37,10 @@ go.work.sum
 # OS files
 .DS_Store
 
+# AI assistant instruction files
+AGENTS.md
+CLAUDE.md
+
 # Binary
 /external-dns-poweradmin-webhook
 /webhook
