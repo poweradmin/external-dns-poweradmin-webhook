@@ -75,13 +75,13 @@ type Zone struct {
 
 // Record represents a DNS record in PowerAdmin
 type Record struct {
-	ID       int    `json:"id"`
-	ZoneID   int    `json:"zone_id"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Content  string `json:"content"`
-	TTL      int    `json:"ttl"`
-	Priority *int   `json:"priority,omitempty"`
+	ID       int      `json:"id"`
+	ZoneID   int      `json:"zone_id"`
+	Name     string   `json:"name"`
+	Type     string   `json:"type"`
+	Content  string   `json:"content"`
+	TTL      int      `json:"ttl"`
+	Priority *int     `json:"priority,omitempty"`
 	Disabled FlexBool `json:"disabled"`
 }
 
