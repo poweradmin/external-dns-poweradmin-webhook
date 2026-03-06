@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.1.0...v1.1.1) (2026-03-06)
+
+
+### Bug Fixes
+
+* resolve FlexBool unmarshalling and TXT record quoting issues ([c7ebdde](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/c7ebddeba9832a0307c4b5f1049dd271c7259002))
+
 ## [1.1.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.0.3...v1.1.0) (2025-12-06)
 
 
