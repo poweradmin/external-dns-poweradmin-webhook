@@ -1,0 +1,59 @@
+# Integration testing setup
+#
+# PowerAdmin UI/API: http://localhost:9090 (admin/admin)
+# Webhook server:    http://localhost:8888 (started separately via make run)
+# Webhook health:    http://localhost:8080/healthz
+#
+# Usage:
+#   docker compose up -d
+#
+#   # Wait for PowerAdmin to be ready, then create an API key:
+#   docker compose exec poweradmin sqlite3 /db/pdns.db \
+#     "INSERT INTO api_keys (name, secret_key, created_by, created_at, disabled) \
+#      VALUES ('webhook-test', 'test-api-key-for-integration', 1, datetime('now'), 0);"
+#
+#   # Create a test zone via PowerAdmin UI at http://localhost:9090
+#   # or directly in the database:
+#   docker compose exec poweradmin sqlite3 /db/pdns.db \
+#     "INSERT INTO domains (name, type) VALUES ('example.com', 'NATIVE');"
+#
+#   # Run the webhook against PowerAdmin:
+#   POWERADMIN_URL=http://localhost:9090 \
+#   POWERADMIN_API_KEY=test-api-key-for-integration \
+#   POWERADMIN_API_VERSION=v1 \
+#   DOMAIN_FILTER=example.com \
+#   LOG_LEVEL=debug \
+#   make run
+#
+#   # Test webhook endpoints (ExternalDNS-facing):
+#   curl http://localhost:8080/healthz        # Webhook health
+#   curl http://localhost:8888/records         # List records
+#   curl http://localhost:8888/               # Negotiate
+#
+#   # Verify PowerAdmin API directly:
+#   curl -H "X-API-Key: test-api-key-for-integration" \
+#     http://localhost:9090/api/v1/zones
+#
+#   docker compose down -v
+
+services:
+  poweradmin:
+    image: poweradmin/poweradmin:latest
+    container_name: poweradmin-integration
+    ports:
+      - "9090:80"
+    environment:
+      - DB_TYPE=sqlite
+      - PA_CREATE_ADMIN=true
+      - PA_ADMIN_PASSWORD=admin
+      - PA_API_ENABLED=true
+      - PA_API_DOCS_ENABLED=true
+      - PA_DNS_HOSTMASTER=hostmaster.example.com
+      - PA_DNS_NS1=ns1.example.com
+      - PA_DNS_NS2=ns2.example.com
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/", "-o", "/dev/null"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

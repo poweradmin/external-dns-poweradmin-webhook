@@ -49,6 +49,10 @@ docker-push:
 run: build
 	./$(PROJECT)
 
+.PHONY: integration-test
+integration-test: ## Run integration tests against PowerAdmin
+	@bash scripts/integration-test.sh
+
 .PHONY: deps
 deps:
 	go mod download
@@ -65,5 +69,6 @@ help:
 	@echo "  clean        - Remove build artifacts"
 	@echo "  docker-build - Build Docker image"
 	@echo "  docker-push  - Push Docker image"
-	@echo "  run          - Build and run locally"
-	@echo "  deps         - Download and tidy dependencies"
+	@echo "  run              - Build and run locally"
+	@echo "  integration-test - Run integration tests against PowerAdmin"
+	@echo "  deps             - Download and tidy dependencies"
