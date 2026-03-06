@@ -1303,3 +1303,120 @@ func TestDeleteRecord_TXTUnquotedContent(t *testing.T) {
 		t.Fatalf("Expected 1 delete call, got %d (TXT matching failed with unquoted API content)", len(ms.deleteCalls))
 	}
 }
+
+// TestFlexBool_MarshalJSON verifies FlexBool serializes back to JSON booleans
+func TestFlexBool_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    FlexBool
+		expected string
+	}{
+		{"true serializes to true", FlexBool(true), "true"},
+		{"false serializes to false", FlexBool(false), "false"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.input)
+			if err != nil {
+				t.Fatalf("MarshalJSON failed: %v", err)
+			}
+			if string(data) != tt.expected {
+				t.Errorf("MarshalJSON(%v) = %s, want %s", tt.input, string(data), tt.expected)
+			}
+		})
+	}
+
+	// Round-trip: unmarshal int, marshal back to bool
+	var b FlexBool
+	if err := json.Unmarshal([]byte("1"), &b); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	data, err := json.Marshal(b)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	if string(data) != "true" {
+		t.Errorf("Round-trip: unmarshal 1 then marshal = %s, want true", string(data))
+	}
+}
+
+// TestFlexBool_RecordStructUnmarshal verifies a full Record JSON with int disabled field deserializes correctly
+func TestFlexBool_RecordStructUnmarshal(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		expected FlexBool
+	}{
+		{
+			"disabled as int 0",
+			`{"id":1,"zone_id":1,"name":"test.example.com","type":"A","content":"1.1.1.1","ttl":300,"disabled":0}`,
+			FlexBool(false),
+		},
+		{
+			"disabled as int 1",
+			`{"id":2,"zone_id":1,"name":"test.example.com","type":"A","content":"1.1.1.1","ttl":300,"disabled":1}`,
+			FlexBool(true),
+		},
+		{
+			"disabled as bool false",
+			`{"id":3,"zone_id":1,"name":"test.example.com","type":"A","content":"1.1.1.1","ttl":300,"disabled":false}`,
+			FlexBool(false),
+		},
+		{
+			"disabled as bool true",
+			`{"id":4,"zone_id":1,"name":"test.example.com","type":"A","content":"1.1.1.1","ttl":300,"disabled":true}`,
+			FlexBool(true),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var rec Record
+			if err := json.Unmarshal([]byte(tt.json), &rec); err != nil {
+				t.Fatalf("Failed to unmarshal Record: %v", err)
+			}
+			if rec.Disabled != tt.expected {
+				t.Errorf("Record.Disabled = %v, want %v", rec.Disabled, tt.expected)
+			}
+		})
+	}
+}
+
+// TestV2API_ListRecords_DisabledAsInt verifies V2 records with int disabled field are parsed correctly
+func TestV2API_ListRecords_DisabledAsInt(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+
+	// Create a mock server that returns disabled as int for V2
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, r *http.Request) {
+		resp := ZonesResponseV2{Success: true}
+		resp.Data.Zones = zones
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+	mux.HandleFunc("/api/v2/zones/", func(w http.ResponseWriter, r *http.Request) {
+		// Return records with disabled as integer (0/1) via raw JSON
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":true,"data":[` +
+			`{"id":101,"zone_id":1,"name":"www.example.com","type":"A","content":"1.1.1.1","ttl":300,"disabled":0},` +
+			`{"id":102,"zone_id":1,"name":"disabled.example.com","type":"A","content":"2.2.2.2","ttl":300,"disabled":1}` +
+			`]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("V2 Records failed with int disabled field: %v", err)
+	}
+
+	if len(endpoints) != 2 {
+		t.Errorf("Expected 2 endpoints, got %d", len(endpoints))
+	}
+}
