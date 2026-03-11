@@ -1,0 +1,33 @@
+.git/
+.github/
+.idea/
+.vscode/
+.DS_Store
+.env
+.goreleaser.yml
+.golangci.yaml
+.yamllint.yaml
+.release-please-manifest.json
+release-please-config.json
+
+# Build artifacts
+/external-dns-poweradmin-webhook
+/webhook
+coverage.*
+*.out
+*.coverprofile
+
+# Documentation & config
+CHANGELOG.md
+CLAUDE.md
+AGENTS.md
+README.md
+LICENSE
+Makefile
+docker-compose.yml
+Dockerfile
+Dockerfile.goreleaser
+
+# Deployment
+deploy/
+scripts/
