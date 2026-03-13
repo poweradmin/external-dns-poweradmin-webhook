@@ -1,5 +1,11 @@
 # external-dns-poweradmin-webhook
 
+[![CI](https://github.com/poweradmin/external-dns-poweradmin-webhook/actions/workflows/test.yaml/badge.svg)](https://github.com/poweradmin/external-dns-poweradmin-webhook/actions/workflows/test.yaml)
+[![Lint](https://github.com/poweradmin/external-dns-poweradmin-webhook/actions/workflows/lint.yaml/badge.svg)](https://github.com/poweradmin/external-dns-poweradmin-webhook/actions/workflows/lint.yaml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/poweradmin/external-dns-poweradmin-webhook)](https://goreportcard.com/report/github.com/poweradmin/external-dns-poweradmin-webhook)
+[![GitHub Release](https://img.shields.io/github/v/release/poweradmin/external-dns-poweradmin-webhook)](https://github.com/poweradmin/external-dns-poweradmin-webhook/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external-dns) that integrates with [PowerAdmin](https://github.com/poweradmin/poweradmin) DNS management system.
 
 ## Features
@@ -74,9 +80,85 @@ docker build -t poweradmin/external-dns-poweradmin-webhook:latest .
 
 ## Deployment
 
-### Kubernetes
+### Helm
 
-The webhook is designed to run as a sidecar container alongside ExternalDNS.
+The recommended way to deploy is using the [ExternalDNS Helm chart](https://github.com/kubernetes-sigs/external-dns/tree/master/charts/external-dns).
+
+Add the ExternalDNS Helm repository:
+
+```shell
+helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
+helm repo update
+```
+
+Create a secret with your PowerAdmin credentials:
+
+```shell
+kubectl create namespace external-dns
+
+kubectl create secret generic poweradmin-credentials \
+  --from-literal=POWERADMIN_URL=https://poweradmin.example.com \
+  --from-literal=POWERADMIN_API_KEY=your-api-key \
+  -n external-dns
+```
+
+Create a Helm values file `external-dns-poweradmin-values.yaml`:
+
+```yaml
+namespace: external-dns
+policy: sync
+sources:
+  - service
+  - ingress
+
+provider:
+  name: webhook
+  webhook:
+    image:
+      repository: ghcr.io/poweradmin/external-dns-poweradmin-webhook
+      tag: latest  # replace with a specific version
+    env:
+      - name: POWERADMIN_URL
+        valueFrom:
+          secretKeyRef:
+            name: poweradmin-credentials
+            key: POWERADMIN_URL
+      - name: POWERADMIN_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: poweradmin-credentials
+            key: POWERADMIN_API_KEY
+      - name: POWERADMIN_API_VERSION
+        value: "v2"
+      - name: DOMAIN_FILTER
+        value: "example.com"  # replace with your domain(s)
+      - name: SERVER_HOST
+        value: "localhost"
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: http-webhook
+      initialDelaySeconds: 10
+      timeoutSeconds: 5
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: http-webhook
+      initialDelaySeconds: 10
+      timeoutSeconds: 5
+```
+
+Install ExternalDNS with Helm:
+
+```shell
+helm install external-dns-poweradmin external-dns/external-dns \
+  -f external-dns-poweradmin-values.yaml \
+  -n external-dns
+```
+
+### Kubernetes (manual)
+
+Alternatively, you can deploy using raw manifests. The webhook runs as a sidecar container alongside ExternalDNS.
 
 1. Create a namespace:
 ```bash
