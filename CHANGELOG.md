@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.1.1...v1.1.2) (2026-03-13)
+
+
+### Bug Fixes
+
+* keep .git/ in Docker build context for version metadata ([8a576fb](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/8a576fb6dfb8682ac5cd7b8858e38b5a838d9000))
+
 ## [1.1.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.1.0...v1.1.1) (2026-03-06)
 
 
