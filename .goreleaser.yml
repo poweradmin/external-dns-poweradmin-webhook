@@ -43,7 +43,8 @@ sboms:
   - artifacts: archive
 
 dockers_v2:
-  - images:
+  - dockerfile: Dockerfile.goreleaser
+    images:
       - "ghcr.io/poweradmin/external-dns-poweradmin-webhook"
       - "docker.io/poweradmin/external-dns-poweradmin-webhook"
     tags:
