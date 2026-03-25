@@ -24,6 +24,13 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 - Kubernetes cluster (for deployment)
 - ExternalDNS v0.20.0 or later
 
+## Compatibility
+
+| Webhook Version | PowerAdmin Version | Go | Notes |
+|---|---|---|---|
+| 1.2.0+ | 4.3.0+ (v2), 4.1.0+ (v1) | >= 1.23 | v2 wrapped API responses |
+| 1.0.0 - 1.1.2 | 4.1.0 - 4.2.x | >= 1.23 | Initial release |
+
 ## Configuration
 
 The webhook is configured via environment variables:

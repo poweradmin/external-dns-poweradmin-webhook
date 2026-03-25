@@ -75,10 +75,12 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 		switch r.Method {
 		case http.MethodGet:
 			if recs, ok := ms.records[zoneID]; ok {
-				resp := RecordsResponse{Success: true, Data: recs}
+				resp := RecordsResponseV2Records{Success: true}
+				resp.Data.Records = recs
 				_ = json.NewEncoder(w).Encode(resp)
 			} else {
-				resp := RecordsResponse{Success: true, Data: []Record{}}
+				resp := RecordsResponseV2Records{Success: true}
+				resp.Data.Records = []Record{}
 				_ = json.NewEncoder(w).Encode(resp)
 			}
 
@@ -1397,10 +1399,10 @@ func TestV2API_ListRecords_DisabledAsInt(t *testing.T) {
 	mux.HandleFunc("/api/v2/zones/", func(w http.ResponseWriter, r *http.Request) {
 		// Return records with disabled as integer (0/1) via raw JSON
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"success":true,"data":[` +
+		_, _ = w.Write([]byte(`{"success":true,"data":{"records":[` +
 			`{"id":101,"zone_id":1,"name":"www.example.com","type":"A","content":"1.1.1.1","ttl":300,"disabled":0},` +
 			`{"id":102,"zone_id":1,"name":"disabled.example.com","type":"A","content":"2.2.2.2","ttl":300,"disabled":1}` +
-			`]}`))
+			`]}}`))
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()

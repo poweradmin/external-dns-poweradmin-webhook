@@ -128,11 +128,22 @@ type ZonesResponseV1 struct {
 	Data    []Zone `json:"data"`
 }
 
-// RecordsResponse represents the response from the records list endpoint (same for V1 and V2)
-type RecordsResponse struct {
+// RecordsResponseV1 represents the response from the records list endpoint (V1 API)
+// V1 returns the records array directly in the data field.
+type RecordsResponseV1 struct {
 	Success bool     `json:"success"`
 	Message string   `json:"message"`
 	Data    []Record `json:"data"`
+}
+
+// RecordsResponseV2Records represents the response from the records list endpoint (V2 API)
+// V2 wraps records inside a data.records object.
+type RecordsResponseV2Records struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    struct {
+		Records []Record `json:"records"`
+	} `json:"data"`
 }
 
 // RecordResponseV2 represents the response from a single record operation (V2 API)
@@ -237,16 +248,26 @@ func (c *Client) ListRecords(ctx context.Context, zoneID int) ([]Record, error) 
 		return nil, err
 	}
 
-	var response RecordsResponse
+	if c.apiVersion == APIVersionV1 {
+		var response RecordsResponseV1
+		if err := json.Unmarshal(respBody, &response); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal records response: %w", err)
+		}
+		if !response.Success {
+			return nil, fmt.Errorf("API returned error: %s", response.Message)
+		}
+		return response.Data, nil
+	}
+
+	// V2 API
+	var response RecordsResponseV2Records
 	if err := json.Unmarshal(respBody, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal records response: %w", err)
 	}
-
 	if !response.Success {
 		return nil, fmt.Errorf("API returned error: %s", response.Message)
 	}
-
-	return response.Data, nil
+	return response.Data.Records, nil
 }
 
 // CreateRecord creates a new DNS record in the specified zone
