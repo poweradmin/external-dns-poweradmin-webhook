@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.0...v1.2.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* use pre-built binary in GoReleaser Docker build to fix missing go.sum ([a843a74](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/a843a747dc8db677d0c269e667b1830eb4f18537))
+
 ## [1.2.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.1.2...v1.2.0) (2026-03-25)
 
 
