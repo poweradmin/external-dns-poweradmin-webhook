@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.1.2...v1.2.0) (2026-03-25)
+
+
+### Features
+
+* support PowerAdmin v2 wrapped API response format for records list ([74a8189](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/74a8189350b96639b3f0eb43b9517830da0d914a))
+
 ## [1.1.2](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.1.1...v1.1.2) (2026-03-13)
 
 
