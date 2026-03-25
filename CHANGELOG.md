@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.1...v1.2.2) (2026-03-25)
+
+
+### Bug Fixes
+
+* use TARGETPLATFORM arg for binary path in GoReleaser Dockerfile ([3f0b5cd](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/3f0b5cdd365e8bf99b23ce21c902d52876db1d7e))
+
 ## [1.2.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.0...v1.2.1) (2026-03-25)
 
 
