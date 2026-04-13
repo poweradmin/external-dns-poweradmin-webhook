@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.3](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.2...v1.2.3) (2026-04-13)
+
+
+### Bug Fixes
+
+* bump golangci-lint to v2.11.4 for Go 1.26 compatibility ([413aa38](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/413aa38182db9faba95d834b420f794c7bed5e4e))
+
 ## [1.2.2](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.1...v1.2.2) (2026-03-25)
 
 
