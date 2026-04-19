@@ -62,6 +62,13 @@ spec:
         app: external-dns
     spec:
       serviceAccountName: external-dns
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 20000
+        runAsGroup: 20000
+        fsGroup: 20000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         # External DNS container
         - name: external-dns
@@ -72,6 +79,11 @@ spec:
             - --provider=webhook
             - --webhook-provider-url=http://localhost:8888
             - --log-level=info
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: "64Mi"
@@ -82,7 +94,12 @@ spec:
 
         # PowerAdmin webhook sidecar
         - name: poweradmin-webhook
-          image: poweradmin/external-dns-poweradmin-webhook:latest
+          image: poweradmin/external-dns-poweradmin-webhook:1.2.3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 8888
               name: webhook
