@@ -2,6 +2,14 @@
 version: "2"
 
 linters:
+  enable:
+    - gosec
+    - govet
+    - staticcheck
+    - revive
+    - errcheck
+    - ineffassign
+    - unused
   exclusions:
     generated: lax
     presets:

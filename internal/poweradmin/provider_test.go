@@ -46,7 +46,7 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 	mux := http.NewServeMux()
 
 	// List zones
-	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, _ *http.Request) {
 		resp := ZonesResponseV2{Success: true}
 		resp.Data.Zones = ms.zones
 		_ = json.NewEncoder(w).Encode(resp)
@@ -852,7 +852,7 @@ func newMockServerV1(zones []Zone, records map[int][]Record) *mockServer {
 	mux := http.NewServeMux()
 
 	// List zones - V1 returns array directly in data
-	mux.HandleFunc("/api/v1/zones", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/zones", func(w http.ResponseWriter, _ *http.Request) {
 		resp := ZonesResponseV1{Success: true, Data: ms.zones}
 		_ = json.NewEncoder(w).Encode(resp)
 	})
@@ -1391,12 +1391,12 @@ func TestV2API_ListRecords_DisabledAsInt(t *testing.T) {
 
 	// Create a mock server that returns disabled as int for V2
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, _ *http.Request) {
 		resp := ZonesResponseV2{Success: true}
 		resp.Data.Zones = zones
 		_ = json.NewEncoder(w).Encode(resp)
 	})
-	mux.HandleFunc("/api/v2/zones/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v2/zones/", func(w http.ResponseWriter, _ *http.Request) {
 		// Return records with disabled as integer (0/1) via raw JSON
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"success":true,"data":{"records":[` +
