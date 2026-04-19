@@ -94,7 +94,7 @@ spec:
 
         # PowerAdmin webhook sidecar
         - name: poweradmin-webhook
-          image: poweradmin/external-dns-poweradmin-webhook:1.2.3
+          image: poweradmin/external-dns-poweradmin-webhook:latest
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

@@ -1,4 +1,8 @@
 # registry.k8s.io is the official Kubernetes container registry and
 # docker.io is the canonical public registry for this project's own image.
 # Trivy's default trusted-registry list does not include either.
-KSV0125
+AVD-KSV-0125
+
+# deploy/kubernetes/deployment.yaml is a scaffold example; users pin to a
+# specific release tag at deploy time.
+AVD-KSV-0013
