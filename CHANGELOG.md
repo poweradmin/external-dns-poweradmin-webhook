@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.4](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.3...v1.2.4) (2026-04-27)
+
+
+### Bug Fixes
+
+* pin GitHub-owned actions by commit SHA ([9ba028e](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/9ba028e884b0fda6e1581a89d27cc6beda8c22e4))
+* pin GitHub-owned actions by commit SHA ([4e6e418](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/4e6e41806641bf51e5cf51328445c15c60eab51c))
+
 ## [1.2.3](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.2...v1.2.3) (2026-04-13)
 
 
