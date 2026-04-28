@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.5](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.4...v1.2.5) (2026-04-28)
+
+
+### Bug Fixes
+
+* drop deprecated cosign --output-certificate from signs config ([13b61c0](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/13b61c0fa5c298521838fd68c992821dec8eb04d))
+* drop deprecated cosign --output-certificate from signs config ([800319c](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/800319cf3d075ccf1a27a3be709d4efba2be7a8d))
+
 ## [1.2.4](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.3...v1.2.4) (2026-04-27)
 
 
