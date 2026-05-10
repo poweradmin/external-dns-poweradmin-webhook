@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.6](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.5...v1.2.6) (2026-05-10)
+
+
+### Bug Fixes
+
+* address GO-2026-4918 HTTP/2 CONTINUATION infinite loop ([8a73d16](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/8a73d16361d15e2e0b6a672e3816a6a900557323))
+* bump golang.org/x/net to v0.54.0 and go to 1.26.3 for GO-2026-4918 ([30b4ed1](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/30b4ed13a075f34c446306e3aae5e431d7158da6))
+
 ## [1.2.5](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.4...v1.2.5) (2026-04-28)
 
 
