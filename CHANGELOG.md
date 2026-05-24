@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.7](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.6...v1.2.7) (2026-05-24)
+
+
+### Bug Fixes
+
+* bump golang.org/x/net to v0.55.0 to address GO-2026-5026 ([a91ae01](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/a91ae016dc89b06f5b3828ec8c50cbed204c212d))
+* bump golang.org/x/net to v0.55.0 to address GO-2026-5026 ([51b0e90](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/51b0e906b64fb1522c398319b120db71845be6a4))
+
 ## [1.2.6](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.5...v1.2.6) (2026-05-10)
 
 
