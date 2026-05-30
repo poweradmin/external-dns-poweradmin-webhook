@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.8](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.7...v1.2.8) (2026-05-30)
+
+
+### Bug Fixes
+
+* idempotent record delete on 404 and typed API errors ([113616f](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/113616f1b55b66c3d56f8989c2229a9b915357f1))
+* treat 404 on record delete as idempotent and surface typed API errors ([920b88a](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/920b88ae3752df0d2925e2cb9c831c09aff2291e))
+
 ## [1.2.7](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.6...v1.2.7) (2026-05-24)
 
 
