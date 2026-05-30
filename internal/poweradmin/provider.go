@@ -379,6 +379,7 @@ func isSupportedRecordType(recordType string) bool {
 		"SRV":   true,
 		"PTR":   true,
 		"CAA":   true,
+		"LUA":   true,
 	}
 	return supported[recordType]
 }

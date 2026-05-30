@@ -11,7 +11,7 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 ## Features
 
 - Full integration with PowerAdmin API (v1 and v2 supported)
-- Supports A, AAAA, CNAME, TXT, MX, NS, SRV, PTR, and CAA record types
+- Supports A, AAAA, CNAME, TXT, MX, NS, SRV, PTR, CAA, and LUA record types
 - Domain filtering support
 - Dry-run mode for testing
 - Prometheus metrics endpoint
@@ -228,6 +228,16 @@ Ensure your PowerAdmin instance has:
    - Create records
    - Update records
    - Delete records
+
+### LUA records (GSLB)
+
+LUA records (for GSLB use cases such as `pickclosest`, `ifurlup`, `ifportup`) are managed
+verbatim — the record content is passed through unchanged in both directions. To use them:
+
+- Enable [`enable-lua-records`](https://doc.powerdns.com/authoritative/settings.html#setting-enable-lua-records)
+  on the PowerDNS server (and set the `ENABLE-LUA-RECORDS` zone metadata where required).
+- Add `LUA` to ExternalDNS's `--managed-record-types` (the defaults are `A`, `AAAA`, `CNAME`
+  only), then declare records via the `DNSEndpoint` CRD with `recordType: LUA`.
 
 ## Development
 
