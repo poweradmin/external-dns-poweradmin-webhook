@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.8...v1.3.0) (2026-05-30)
+
+
+### Features
+
+* support LUA record type for GSLB ([30edd55](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/30edd552402878f059f68fb5526046917324d478))
+* support LUA record type for GSLB ([df6bbaf](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/df6bbafb00474cc17ccf30ec12417ba3b139e69f))
+
 ## [1.2.8](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.7...v1.2.8) (2026-05-30)
 
 
