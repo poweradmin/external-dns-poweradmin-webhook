@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -112,6 +113,17 @@ type APIResponse struct {
 	Data    json.RawMessage `json:"data"`
 }
 
+// APIError represents a non-2xx response from the PowerAdmin API. It carries the
+// HTTP status code so callers can react to specific outcomes (e.g. 404).
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("API request failed with status %d: %s", e.StatusCode, e.Message)
+}
+
 // ZonesResponseV2 represents the response from the zones list endpoint (V2 API)
 type ZonesResponseV2 struct {
 	Success bool   `json:"success"`
@@ -203,7 +215,12 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(respBody))
+		message := string(respBody)
+		var apiResp APIResponse
+		if err := json.Unmarshal(respBody, &apiResp); err == nil && apiResp.Message != "" {
+			message = apiResp.Message
+		}
+		return nil, &APIError{StatusCode: resp.StatusCode, Message: message}
 	}
 
 	return respBody, nil
@@ -359,5 +376,11 @@ func (c *Client) UpdateRecord(ctx context.Context, zoneID, recordID int, record 
 func (c *Client) DeleteRecord(ctx context.Context, zoneID, recordID int) error {
 	path := fmt.Sprintf("/zones/%d/records/%d", zoneID, recordID)
 	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
+	// A missing record is already gone; treat as success so re-applying the
+	// desired state stays idempotent across external-dns reconcile loops.
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		return nil
+	}
 	return err
 }
