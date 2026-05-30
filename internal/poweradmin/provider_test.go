@@ -358,8 +358,22 @@ func TestParseTarget_A(t *testing.T) {
 	}
 }
 
+func TestParseTarget_LUA(t *testing.T) {
+	// LUA content carries an embedded query type plus a quoted Lua expression and
+	// must round-trip verbatim: no quote stripping, no priority parsing.
+	target := "A \"ifurlup('https://example.com', {'192.0.2.1','198.51.100.1'})\""
+	content, priority := parseTarget("LUA", target)
+
+	if content != target {
+		t.Errorf("Expected content unchanged %q, got %q", target, content)
+	}
+	if priority != nil {
+		t.Error("Expected nil priority for LUA record")
+	}
+}
+
 func TestIsSupportedRecordType(t *testing.T) {
-	supported := []string{"A", "AAAA", "CNAME", "TXT", "MX", "NS", "SRV", "PTR", "CAA"}
+	supported := []string{"A", "AAAA", "CNAME", "TXT", "MX", "NS", "SRV", "PTR", "CAA", "LUA"}
 	unsupported := []string{"SOA", "DNSKEY", "DS", "RRSIG", "NSEC"}
 
 	for _, rt := range supported {
@@ -792,6 +806,41 @@ func TestRecords_MXWithPriority(t *testing.T) {
 	}
 }
 
+// TestRecords_LUA verifies LUA records are surfaced (not filtered) with content preserved
+func TestRecords_LUA(t *testing.T) {
+	luaContent := "A \"ifurlup('https://example.com', {'192.0.2.1','198.51.100.1'})\""
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "gslb.example.com", Type: "LUA", Content: luaContent, TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	if len(endpoints) != 1 {
+		t.Fatalf("Expected 1 endpoint, got %d", len(endpoints))
+	}
+	if endpoints[0].RecordType != "LUA" {
+		t.Errorf("Expected record type LUA, got %q", endpoints[0].RecordType)
+	}
+	if endpoints[0].Targets[0] != luaContent {
+		t.Errorf("Expected LUA target %q, got %q", luaContent, endpoints[0].Targets[0])
+	}
+}
+
 // TestApplyChanges_MixedOperations verifies create, update, and delete in single call
 func TestApplyChanges_MixedOperations(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
@@ -1030,6 +1079,51 @@ func TestV1API_CreateRecord(t *testing.T) {
 
 	if ms.createCalls[0].Content != "1.1.1.1" {
 		t.Errorf("Expected content '1.1.1.1', got %q", ms.createCalls[0].Content)
+	}
+}
+
+// TestCreateRecord_LUA verifies a LUA record is sent with type "LUA", content
+// preserved verbatim, and no priority (PowerAdmin requires priority 0/empty for LUA).
+func TestCreateRecord_LUA(t *testing.T) {
+	luaContent := "A \"ifurlup('https://example.com', {'192.0.2.1','198.51.100.1'})\""
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{1: {}}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	changes := &plan.Changes{
+		Create: []*endpoint.Endpoint{
+			{
+				DNSName:    "gslb.example.com",
+				RecordType: "LUA",
+				Targets:    endpoint.Targets{luaContent},
+				RecordTTL:  300,
+			},
+		},
+	}
+
+	if err := provider.ApplyChanges(context.Background(), changes); err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+
+	if len(ms.createCalls) != 1 {
+		t.Fatalf("Expected 1 create call, got %d", len(ms.createCalls))
+	}
+	if ms.createCalls[0].Type != "LUA" {
+		t.Errorf("Expected type 'LUA', got %q", ms.createCalls[0].Type)
+	}
+	if ms.createCalls[0].Content != luaContent {
+		t.Errorf("Expected content %q, got %q", luaContent, ms.createCalls[0].Content)
+	}
+	if ms.createCalls[0].Priority != nil {
+		t.Errorf("Expected nil priority for LUA, got %v", *ms.createCalls[0].Priority)
 	}
 }
 
