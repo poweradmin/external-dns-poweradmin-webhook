@@ -7,6 +7,8 @@ updates:
       day: "tuesday"
       time: "15:00"
       timezone: "Europe/Vilnius"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -14,6 +16,8 @@ updates:
       day: "thursday"
       time: "11:00"
       timezone: "Europe/Vilnius"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -21,3 +25,5 @@ updates:
       day: "friday"
       time: "12:00"
       timezone: "Europe/Vilnius"
+    cooldown:
+      default-days: 7
