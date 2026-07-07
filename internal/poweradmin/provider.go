@@ -53,7 +53,18 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 
 	var endpoints []*endpoint.Endpoint
 
+	// external-dns expects one endpoint per record set: records sharing a DNS
+	// name and type must be aggregated into a single multi-target endpoint,
+	// otherwise the plan only ever sees one of them as current state.
+	type endpointKey struct {
+		dnsName    string
+		recordType string
+	}
+
 	for _, zone := range zones {
+		// Aggregation is scoped per zone so records shadowed across
+		// overlapping zones keep their zone attribution.
+		byKey := make(map[endpointKey]*endpoint.Endpoint)
 		// Apply domain filter
 		if !p.domainFilter.Match(zone.Name) {
 			log.Debugf("Skipping zone %s: does not match domain filter", zone.Name)
@@ -71,7 +82,7 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 
 		for _, record := range records {
 			// Skip SOA and NS records at zone apex
-			if record.Type == "SOA" || (record.Type == "NS" && record.Name == zone.Name) {
+			if record.Type == "SOA" || (record.Type == "NS" && strings.EqualFold(record.Name, zone.Name)) {
 				continue
 			}
 
@@ -90,16 +101,19 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 				}
 			}
 
-			// Handle MX records with priority
-			target := record.Content
-			if record.Type == "TXT" {
-				target = strings.Trim(target, "\"")
-			}
-			if record.Type == "MX" && record.Priority != nil {
-				target = fmt.Sprintf("%d %s", *record.Priority, record.Content)
+			target := recordTarget(record)
+			key := endpointKey{dnsName: strings.ToLower(dnsName), recordType: record.Type}
+			if ep, ok := byKey[key]; ok {
+				ep.Targets = append(ep.Targets, target)
+				continue
 			}
 
 			ep := endpoint.NewEndpointWithTTL(dnsName, record.Type, endpoint.TTL(record.TTL), target)
+			if ep == nil {
+				log.Warnf("Skipping record %s %s in zone %s: invalid DNS name", record.Name, record.Type, zone.Name)
+				continue
+			}
+			byKey[key] = ep
 			endpoints = append(endpoints, ep)
 		}
 	}
@@ -161,39 +175,18 @@ func (p *Provider) GetDomainFilter() endpoint.DomainFilterInterface {
 	return p.domainFilter
 }
 
-// createRecord creates a new DNS record
+// createRecord creates DNS records for all targets of an endpoint
 func (p *Provider) createRecord(ctx context.Context, ep *endpoint.Endpoint) error {
 	zone, err := p.findZoneForEndpoint(ep)
 	if err != nil {
 		return err
 	}
 
+	recordName := extractRecordName(ep.DNSName, zone.Name)
+	ttl := endpointTTL(ep)
+
 	for _, target := range ep.Targets {
-		recordName := extractRecordName(ep.DNSName, zone.Name)
-		content, priority := parseTarget(ep.RecordType, target)
-
-		ttl := DefaultTTL
-		if ep.RecordTTL.IsConfigured() {
-			ttl = int(ep.RecordTTL)
-		}
-
-		req := CreateRecordRequest{
-			Name:     recordName,
-			Type:     ep.RecordType,
-			Content:  content,
-			TTL:      ttl,
-			Priority: priority,
-			Disabled: false,
-		}
-
-		log.Infof("Creating record: %s %s %s in zone %s", recordName, ep.RecordType, content, zone.Name)
-
-		if p.dryRun {
-			log.Info("Dry run: skipping actual creation")
-			continue
-		}
-
-		if _, err := p.client.CreateRecord(ctx, zone.ID, req); err != nil {
+		if err := p.createOne(ctx, zone, recordName, ep.RecordType, target, ttl); err != nil {
 			return err
 		}
 	}
@@ -201,7 +194,10 @@ func (p *Provider) createRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 	return nil
 }
 
-// updateRecord updates an existing DNS record
+// updateRecord reconciles the record set for an endpoint: existing records are
+// rewritten in place, surplus desired targets are created, and records for
+// targets that are no longer desired are deleted. This keeps the zone correct
+// even when the number of targets grows or shrinks between old and new.
 func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endpoint) error {
 	zone, err := p.findZoneForEndpoint(newEp)
 	if err != nil {
@@ -214,65 +210,75 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 		return fmt.Errorf("failed to list records for zone %s: %w", zone.Name, err)
 	}
 
-	// Track which record IDs have already been updated to handle duplicate targets
-	updatedRecordIDs := make(map[int]bool)
+	existing := claimRecords(records, oldEp)
+	ttl := endpointTTL(newEp)
+	recordName := extractRecordName(newEp.DNSName, zone.Name)
 
-	// Process updates by index to preserve multiplicity for duplicate targets
-	for i, target := range oldEp.Targets {
-		if i >= len(newEp.Targets) {
+	// Pair desired targets with records that already match so unchanged
+	// records are left alone.
+	used := make([]bool, len(existing))
+	var pending []string
+	for _, target := range newEp.Targets {
+		matched := false
+		for i, record := range existing {
+			if !used[i] && record.TTL == ttl && recordMatchesTarget(record, target) {
+				used[i] = true
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			pending = append(pending, target)
+		}
+	}
+	var leftover []Record
+	for i, record := range existing {
+		if !used[i] {
+			leftover = append(leftover, record)
+		}
+	}
+
+	// Rewrite leftover records with the remaining desired targets; once
+	// records run out, create the surplus targets.
+	for i, target := range pending {
+		if i >= len(leftover) {
+			if err := p.createOne(ctx, zone, recordName, newEp.RecordType, target, ttl); err != nil {
+				return err
+			}
 			continue
 		}
-		newTarget := newEp.Targets[i]
-		content, _ := parseTarget(oldEp.RecordType, target)
 
-		for _, record := range records {
-			// Skip if already updated this record
-			if updatedRecordIDs[record.ID] {
-				continue
-			}
+		record := leftover[i]
+		content, priority := parseTarget(newEp.RecordType, target)
+		req := UpdateRecordRequest{
+			Name:     recordName,
+			Type:     newEp.RecordType,
+			Content:  content,
+			TTL:      ttl,
+			Priority: priority,
+			Disabled: false,
+		}
+		log.Infof("Updating record %d: %s -> %s", record.ID, record.Content, content)
+		if p.dryRun {
+			log.Info("Dry run: skipping actual update")
+			continue
+		}
+		if _, err := p.client.UpdateRecord(ctx, zone.ID, record.ID, req); err != nil {
+			return err
+		}
+	}
 
-			// PowerAdmin API returns full DNS names, so compare against oldEp.DNSName
-			// Normalize TXT content for comparison since API may return quoted or unquoted values
-			if record.Name == oldEp.DNSName && record.Type == oldEp.RecordType && normalizeTXTContent(record.Type, record.Content) == normalizeTXTContent(oldEp.RecordType, content) {
-				// Found matching record, update it with corresponding new value
-				newContent, newPriority := parseTarget(newEp.RecordType, newTarget)
-
-				ttl := DefaultTTL
-				if newEp.RecordTTL.IsConfigured() {
-					ttl = int(newEp.RecordTTL)
-				}
-
-				req := UpdateRecordRequest{
-					Name:     extractRecordName(newEp.DNSName, zone.Name),
-					Type:     newEp.RecordType,
-					Content:  newContent,
-					TTL:      ttl,
-					Priority: newPriority,
-					Disabled: false,
-				}
-
-				log.Infof("Updating record %d: %s -> %s", record.ID, content, newContent)
-
-				// Mark this record as updated before making the API call
-				updatedRecordIDs[record.ID] = true
-
-				if p.dryRun {
-					log.Info("Dry run: skipping actual update")
-					break // Move to next target
-				}
-
-				if _, err := p.client.UpdateRecord(ctx, zone.ID, record.ID, req); err != nil {
-					return err
-				}
-				break // Found and updated matching record, move to next target
-			}
+	// Records claimed by old targets but not reused are no longer desired.
+	for i := len(pending); i < len(leftover); i++ {
+		if err := p.deleteOne(ctx, zone, leftover[i]); err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
-// deleteRecord deletes a DNS record
+// deleteRecord deletes the records claimed by an endpoint's targets
 func (p *Provider) deleteRecord(ctx context.Context, ep *endpoint.Endpoint) error {
 	zone, err := p.findZoneForEndpoint(ep)
 	if err != nil {
@@ -285,28 +291,68 @@ func (p *Provider) deleteRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 		return fmt.Errorf("failed to list records for zone %s: %w", zone.Name, err)
 	}
 
-	for _, target := range ep.Targets {
-		content, _ := parseTarget(ep.RecordType, target)
-
-		for _, record := range records {
-			// PowerAdmin API returns full DNS names, so compare against ep.DNSName
-			// Normalize TXT content for comparison since API may return quoted or unquoted values
-			if record.Name == ep.DNSName && record.Type == ep.RecordType && normalizeTXTContent(record.Type, record.Content) == normalizeTXTContent(ep.RecordType, content) {
-				log.Infof("Deleting record %d: %s %s %s", record.ID, ep.DNSName, ep.RecordType, content)
-
-				if p.dryRun {
-					log.Info("Dry run: skipping actual deletion")
-					continue
-				}
-
-				if err := p.client.DeleteRecord(ctx, zone.ID, record.ID); err != nil {
-					return err
-				}
-			}
+	for _, record := range claimRecords(records, ep) {
+		if err := p.deleteOne(ctx, zone, record); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// createOne creates a single DNS record for one endpoint target
+func (p *Provider) createOne(ctx context.Context, zone *Zone, recordName, recordType, target string, ttl int) error {
+	content, priority := parseTarget(recordType, target)
+	req := CreateRecordRequest{
+		Name:     recordName,
+		Type:     recordType,
+		Content:  content,
+		TTL:      ttl,
+		Priority: priority,
+		Disabled: false,
+	}
+
+	log.Infof("Creating record: %s %s %s in zone %s", recordName, recordType, content, zone.Name)
+	if p.dryRun {
+		log.Info("Dry run: skipping actual creation")
+		return nil
+	}
+
+	_, err := p.client.CreateRecord(ctx, zone.ID, req)
+	return err
+}
+
+// deleteOne deletes a single DNS record
+func (p *Provider) deleteOne(ctx context.Context, zone *Zone, record Record) error {
+	log.Infof("Deleting record %d: %s %s %s", record.ID, record.Name, record.Type, record.Content)
+	if p.dryRun {
+		log.Info("Dry run: skipping actual deletion")
+		return nil
+	}
+	return p.client.DeleteRecord(ctx, zone.ID, record.ID)
+}
+
+// claimRecords returns the zone records currently owned by the endpoint: same
+// name and type, with content matching one of the endpoint's targets. Targets
+// are consumed as a multiset so duplicate targets claim distinct records.
+func claimRecords(records []Record, ep *endpoint.Endpoint) []Record {
+	remaining := make([]string, len(ep.Targets))
+	copy(remaining, ep.Targets)
+
+	var claimed []Record
+	for _, record := range records {
+		if !strings.EqualFold(record.Name, ep.DNSName) || record.Type != ep.RecordType {
+			continue
+		}
+		for i, target := range remaining {
+			if recordMatchesTarget(record, target) {
+				claimed = append(claimed, record)
+				remaining = append(remaining[:i], remaining[i+1:]...)
+				break
+			}
+		}
+	}
+	return claimed
 }
 
 // findZoneForEndpoint finds the zone that contains the given endpoint
@@ -337,6 +383,14 @@ func extractRecordName(dnsName, zoneName string) string {
 	return strings.TrimSuffix(dnsName, "."+zoneName)
 }
 
+// endpointTTL returns the endpoint's configured TTL, or DefaultTTL if unset
+func endpointTTL(ep *endpoint.Endpoint) int {
+	if ep.RecordTTL.IsConfigured() {
+		return int(ep.RecordTTL)
+	}
+	return DefaultTTL
+}
+
 // parseTarget parses the target value for special record types like MX
 func parseTarget(recordType, target string) (content string, priority *int) {
 	if recordType == "MX" {
@@ -358,13 +412,34 @@ func parseTarget(recordType, target string) (content string, priority *int) {
 	return target, nil
 }
 
-// normalizeTXTContent strips surrounding quotes from TXT content for comparison purposes.
-// Both the API response and endpoint targets may or may not have quotes.
-func normalizeTXTContent(recordType, content string) string {
-	if recordType == "TXT" {
-		return strings.Trim(content, "\"")
+// recordTarget converts a PowerAdmin record to its external-dns target
+// representation: MX priority is folded into the target string and TXT quotes
+// are stripped. The result is canonical for comparison purposes.
+func recordTarget(record Record) string {
+	switch record.Type {
+	case "TXT":
+		return strings.Trim(record.Content, "\"")
+	case "MX":
+		if record.Priority != nil {
+			return fmt.Sprintf("%d %s", *record.Priority, record.Content)
+		}
 	}
-	return content
+	return record.Content
+}
+
+// normalizeTarget canonicalizes an endpoint target for comparison. The API may
+// return TXT content quoted or unquoted, and external-dns stores it unquoted.
+func normalizeTarget(recordType, target string) string {
+	if recordType == "TXT" {
+		return strings.Trim(target, "\"")
+	}
+	return target
+}
+
+// recordMatchesTarget reports whether a PowerAdmin record represents the given
+// external-dns target.
+func recordMatchesTarget(record Record, target string) bool {
+	return recordTarget(record) == normalizeTarget(record.Type, target)
 }
 
 // isSupportedRecordType checks if the record type is supported

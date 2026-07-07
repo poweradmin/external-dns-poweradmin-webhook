@@ -254,6 +254,198 @@ func TestUpdateRecord_DuplicateTargets(t *testing.T) {
 	}
 }
 
+// TestRecords_AggregatesMultiTarget verifies records sharing a name and type
+// are returned as a single multi-target endpoint. external-dns's plan keeps
+// only one current endpoint per (name, type), so separate endpoints per record
+// would make multi-target record sets flap forever.
+func TestRecords_AggregatesMultiTarget(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: 103, ZoneID: 1, Name: "www.example.com", Type: "AAAA", Content: "::1", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	if len(endpoints) != 2 {
+		t.Fatalf("Expected 2 endpoints (A + AAAA), got %d", len(endpoints))
+	}
+
+	for _, ep := range endpoints {
+		switch ep.RecordType {
+		case "A":
+			if len(ep.Targets) != 2 {
+				t.Errorf("Expected 2 A targets, got %v", ep.Targets)
+			}
+		case "AAAA":
+			if len(ep.Targets) != 1 {
+				t.Errorf("Expected 1 AAAA target, got %v", ep.Targets)
+			}
+		default:
+			t.Errorf("Unexpected record type %s", ep.RecordType)
+		}
+	}
+}
+
+// TestUpdateRecord_AddTarget verifies growing a target set creates the surplus
+// target and leaves the unchanged record alone.
+func TestUpdateRecord_AddTarget(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache["example.com"] = zones[0]
+
+	oldEp := &endpoint.Endpoint{
+		DNSName:    "www.example.com",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+		RecordTTL:  300,
+	}
+	newEp := &endpoint.Endpoint{
+		DNSName:    "www.example.com",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1", "2.2.2.2"},
+		RecordTTL:  300,
+	}
+
+	if err := provider.updateRecord(context.Background(), oldEp, newEp); err != nil {
+		t.Fatalf("updateRecord failed: %v", err)
+	}
+
+	if len(ms.createCalls) != 1 {
+		t.Fatalf("Expected 1 create call for the added target, got %d", len(ms.createCalls))
+	}
+	if ms.createCalls[0].Content != "2.2.2.2" {
+		t.Errorf("Expected create for 2.2.2.2, got %q", ms.createCalls[0].Content)
+	}
+	if len(ms.updateCalls) != 0 {
+		t.Errorf("Expected 0 update calls for unchanged target, got %d", len(ms.updateCalls))
+	}
+	if len(ms.deleteCalls) != 0 {
+		t.Errorf("Expected 0 delete calls, got %d", len(ms.deleteCalls))
+	}
+}
+
+// TestUpdateRecord_RemoveTarget verifies shrinking a target set deletes the
+// orphaned record instead of leaving it to serve stale answers.
+func TestUpdateRecord_RemoveTarget(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache["example.com"] = zones[0]
+
+	oldEp := &endpoint.Endpoint{
+		DNSName:    "www.example.com",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1", "2.2.2.2"},
+		RecordTTL:  300,
+	}
+	newEp := &endpoint.Endpoint{
+		DNSName:    "www.example.com",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+		RecordTTL:  300,
+	}
+
+	if err := provider.updateRecord(context.Background(), oldEp, newEp); err != nil {
+		t.Fatalf("updateRecord failed: %v", err)
+	}
+
+	if len(ms.deleteCalls) != 1 {
+		t.Fatalf("Expected 1 delete call for the removed target, got %d", len(ms.deleteCalls))
+	}
+	if ms.deleteCalls[0].recordID != 102 {
+		t.Errorf("Expected record 102 (2.2.2.2) to be deleted, got %d", ms.deleteCalls[0].recordID)
+	}
+	if len(ms.updateCalls) != 0 {
+		t.Errorf("Expected 0 update calls, got %d", len(ms.updateCalls))
+	}
+	if len(ms.createCalls) != 0 {
+		t.Errorf("Expected 0 create calls, got %d", len(ms.createCalls))
+	}
+}
+
+// TestUpdateRecord_RecreatesDriftedRecord verifies that an old target whose
+// record disappeared out-of-band is recreated rather than silently dropped.
+func TestUpdateRecord_RecreatesDriftedRecord(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	// Zone is empty: the record external-dns believes exists is gone.
+	records := map[int][]Record{1: {}}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache["example.com"] = zones[0]
+
+	oldEp := &endpoint.Endpoint{
+		DNSName:    "www.example.com",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+	}
+	newEp := &endpoint.Endpoint{
+		DNSName:    "www.example.com",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"2.2.2.2"},
+		RecordTTL:  300,
+	}
+
+	if err := provider.updateRecord(context.Background(), oldEp, newEp); err != nil {
+		t.Fatalf("updateRecord failed: %v", err)
+	}
+
+	if len(ms.createCalls) != 1 {
+		t.Fatalf("Expected 1 create call for the drifted record, got %d", len(ms.createCalls))
+	}
+	if ms.createCalls[0].Content != "2.2.2.2" {
+		t.Errorf("Expected create for 2.2.2.2, got %q", ms.createCalls[0].Content)
+	}
+}
+
 func TestApplyChanges_CreateMultipleTargets(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{1: {}}
@@ -1276,13 +1468,16 @@ func TestRecords_TXTQuoting(t *testing.T) {
 		t.Fatalf("Records failed: %v", err)
 	}
 
-	if len(endpoints) != 2 {
-		t.Fatalf("Expected 2 endpoints, got %d", len(endpoints))
+	// Both TXT records share a name and type, so they aggregate into one endpoint
+	if len(endpoints) != 1 {
+		t.Fatalf("Expected 1 endpoint, got %d", len(endpoints))
+	}
+	if len(endpoints[0].Targets) != 2 {
+		t.Fatalf("Expected 2 targets, got %d", len(endpoints[0].Targets))
 	}
 
 	// Quoted TXT content should have quotes stripped
-	for _, ep := range endpoints {
-		target := ep.Targets[0]
+	for _, target := range endpoints[0].Targets {
 		if strings.HasPrefix(target, "\"") || strings.HasSuffix(target, "\"") {
 			t.Errorf("TXT target should be unquoted, got %q", target)
 		}
