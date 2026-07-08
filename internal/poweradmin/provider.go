@@ -206,10 +206,43 @@ func (p *Provider) Health(ctx context.Context) error {
 	return err
 }
 
-// AdjustEndpoints modifies endpoints before they are applied
+// AdjustEndpoints filters desired endpoints down to what this provider can
+// manage. Records hides unsupported types and apex NS records, so a desired
+// endpoint the API would accept but Records cannot report would be recreated
+// on every reconcile loop, stacking duplicates in the zone. CNAME endpoints
+// are trimmed to one target since DNS allows a single CNAME per name.
 func (p *Provider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
-	// No adjustments needed for PowerAdmin
-	return endpoints, nil
+	var adjusted []*endpoint.Endpoint
+	for _, ep := range endpoints {
+		if !isSupportedRecordType(ep.RecordType) {
+			log.Warnf("Skipping endpoint %s: unsupported record type %s", ep.DNSName, ep.RecordType)
+			continue
+		}
+		if ep.RecordType == "NS" && p.isZoneApex(normalizeDNSName(ep.DNSName)) {
+			log.Warnf("Skipping endpoint %s: apex NS records are not managed", ep.DNSName)
+			continue
+		}
+		if ep.RecordType == "CNAME" && len(ep.Targets) > 1 {
+			log.Warnf("CNAME %s has %d targets, keeping only %q", ep.DNSName, len(ep.Targets), ep.Targets[0])
+			ep.Targets = ep.Targets[:1]
+		}
+		adjusted = append(adjusted, ep)
+	}
+	return adjusted, nil
+}
+
+// isZoneApex reports whether the canonical dnsName is the apex of a cached
+// zone. The cache is filled by Records, which external-dns always calls
+// before planning changes.
+func (p *Provider) isZoneApex(dnsName string) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	for _, zone := range p.zoneCache {
+		if zone.Name == dnsName {
+			return true
+		}
+	}
+	return false
 }
 
 // GetDomainFilter returns the domain filter for this provider

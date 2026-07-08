@@ -2274,3 +2274,57 @@ func TestDeleteRecord_SkipsDisabledDuplicate(t *testing.T) {
 		t.Errorf("Expected deletion of enabled record 102, got %d", ms.deleteCalls[0].recordID)
 	}
 }
+
+// TestAdjustEndpoints_FiltersUnmanageableEndpoints verifies unsupported record
+// types and apex NS endpoints are dropped, and CNAME endpoints are trimmed to
+// a single target. Records hides all of these, so leaving them desired would
+// recreate them on every reconcile loop.
+func TestAdjustEndpoints_FiltersUnmanageableEndpoints(t *testing.T) {
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider("http://localhost", "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache = []Zone{{ID: 1, Name: "example.com"}}
+
+	endpoints := []*endpoint.Endpoint{
+		{DNSName: "www.example.com", RecordType: "A", Targets: endpoint.Targets{"1.1.1.1"}},
+		{DNSName: "naptr.example.com", RecordType: "NAPTR", Targets: endpoint.Targets{"100 10 \"S\" \"SIP+D2U\" \"\" _sip._udp.example.com."}},
+		{DNSName: "example.com", RecordType: "NS", Targets: endpoint.Targets{"ns1.example.com"}},
+		{DNSName: "sub.example.com", RecordType: "NS", Targets: endpoint.Targets{"ns1.example.com"}},
+		{DNSName: "alias.example.com", RecordType: "CNAME", Targets: endpoint.Targets{"a.example.com", "b.example.com"}},
+	}
+
+	adjusted, err := provider.AdjustEndpoints(endpoints)
+	if err != nil {
+		t.Fatalf("AdjustEndpoints failed: %v", err)
+	}
+
+	byName := make(map[string]*endpoint.Endpoint)
+	for _, ep := range adjusted {
+		byName[ep.DNSName+"/"+ep.RecordType] = ep
+	}
+
+	if len(adjusted) != 3 {
+		t.Errorf("Expected 3 endpoints after filtering, got %d", len(adjusted))
+	}
+	if _, ok := byName["www.example.com/A"]; !ok {
+		t.Error("Expected the A endpoint to be kept")
+	}
+	if _, ok := byName["naptr.example.com/NAPTR"]; ok {
+		t.Error("Expected the unsupported NAPTR endpoint to be dropped")
+	}
+	if _, ok := byName["example.com/NS"]; ok {
+		t.Error("Expected the apex NS endpoint to be dropped")
+	}
+	if _, ok := byName["sub.example.com/NS"]; !ok {
+		t.Error("Expected the non-apex NS endpoint to be kept")
+	}
+	cname, ok := byName["alias.example.com/CNAME"]
+	if !ok {
+		t.Fatal("Expected the CNAME endpoint to be kept")
+	}
+	if len(cname.Targets) != 1 || cname.Targets[0] != "a.example.com" {
+		t.Errorf("Expected CNAME trimmed to first target, got %v", cname.Targets)
+	}
+}
