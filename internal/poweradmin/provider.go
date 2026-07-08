@@ -3,6 +3,7 @@ package poweradmin
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -250,22 +251,7 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 			continue
 		}
 
-		record := leftover[i]
-		content, priority := parseTarget(newEp.RecordType, target)
-		req := UpdateRecordRequest{
-			Name:     recordName,
-			Type:     newEp.RecordType,
-			Content:  content,
-			TTL:      ttl,
-			Priority: priority,
-			Disabled: false,
-		}
-		log.Infof("Updating record %d: %s -> %s", record.ID, record.Content, content)
-		if p.dryRun {
-			log.Info("Dry run: skipping actual update")
-			continue
-		}
-		if _, err := p.client.UpdateRecord(ctx, zone.ID, record.ID, req); err != nil {
+		if err := p.updateOne(ctx, zone, leftover[i], recordName, newEp.RecordType, target, ttl); err != nil {
 			return err
 		}
 	}
@@ -305,7 +291,10 @@ func (p *Provider) deleteRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 
 // createOne creates a single DNS record for one endpoint target
 func (p *Provider) createOne(ctx context.Context, zone *Zone, recordName, recordType, target string, ttl int) error {
-	content, priority := parseTarget(recordType, target)
+	content, priority, err := parseTarget(recordType, target)
+	if err != nil {
+		return err
+	}
 	req := CreateRecordRequest{
 		Name:     recordName,
 		Type:     recordType,
@@ -321,7 +310,32 @@ func (p *Provider) createOne(ctx context.Context, zone *Zone, recordName, record
 		return nil
 	}
 
-	_, err := p.client.CreateRecord(ctx, zone.ID, req)
+	_, err = p.client.CreateRecord(ctx, zone.ID, req)
+	return err
+}
+
+// updateOne rewrites a single DNS record to a new endpoint target
+func (p *Provider) updateOne(ctx context.Context, zone *Zone, record Record, recordName, recordType, target string, ttl int) error {
+	content, priority, err := parseTarget(recordType, target)
+	if err != nil {
+		return err
+	}
+	req := UpdateRecordRequest{
+		Name:     recordName,
+		Type:     recordType,
+		Content:  content,
+		TTL:      ttl,
+		Priority: priority,
+		Disabled: false,
+	}
+
+	log.Infof("Updating record %d: %s -> %s", record.ID, record.Content, content)
+	if p.dryRun {
+		log.Info("Dry run: skipping actual update")
+		return nil
+	}
+
+	_, err = p.client.UpdateRecord(ctx, zone.ID, record.ID, req)
 	return err
 }
 
@@ -404,42 +418,64 @@ func endpointTTL(ep *endpoint.Endpoint) int {
 	return DefaultTTL
 }
 
-// parseTarget parses the target value for special record types like MX
-func parseTarget(recordType, target string) (content string, priority *int) {
-	if recordType == "MX" {
-		parts := strings.SplitN(target, " ", 2)
-		if len(parts) == 2 {
-			var p int
-			if _, err := fmt.Sscanf(parts[0], "%d", &p); err == nil {
-				return parts[1], &p
+// parseTarget splits an external-dns target into the content and priority the
+// PowerAdmin API stores separately. MX targets are "<priority> <host>" and SRV
+// targets are "<priority> <weight> <port> <host>"; both must carry a numeric
+// priority or the record cannot be represented faithfully.
+func parseTarget(recordType, target string) (content string, priority *int, err error) {
+	switch recordType {
+	case "MX":
+		if prioStr, host, ok := strings.Cut(target, " "); ok && host != "" {
+			if prio, err := strconv.Atoi(prioStr); err == nil {
+				return host, &prio, nil
 			}
 		}
+		return "", nil, fmt.Errorf("invalid MX target %q: expected \"priority host\"", target)
+	case "SRV":
+		parts := strings.SplitN(target, " ", 4)
+		if len(parts) == 4 && parts[3] != "" {
+			prio, errPrio := strconv.Atoi(parts[0])
+			_, errWeight := strconv.Atoi(parts[1])
+			_, errPort := strconv.Atoi(parts[2])
+			if errPrio == nil && errWeight == nil && errPort == nil {
+				return strings.Join(parts[1:], " "), &prio, nil
+			}
+		}
+		return "", nil, fmt.Errorf("invalid SRV target %q: expected \"priority weight port target\"", target)
+	case "TXT":
+		// Ensure TXT records are quoted for the PowerAdmin API
+		return fmt.Sprintf("\"%s\"", unquoteTXT(target)), nil, nil
 	}
 
-	// Ensure TXT records are properly quoted for the PowerAdmin API
-	if recordType == "TXT" {
-		target = strings.Trim(target, "\"")
-		target = fmt.Sprintf("\"%s\"", target)
-	}
+	return target, nil, nil
+}
 
-	return target, nil
+// unquoteTXT strips one pair of surrounding quotes from TXT content. A blanket
+// Trim would also eat quotes that are part of the value itself.
+func unquoteTXT(content string) string {
+	if len(content) >= 2 && strings.HasPrefix(content, "\"") && strings.HasSuffix(content, "\"") {
+		return content[1 : len(content)-1]
+	}
+	return content
 }
 
 // recordTarget converts a PowerAdmin record to its external-dns target
-// representation: MX priority is folded into the target string, TXT quotes
-// are stripped, and hostname-valued content loses its trailing dot so the
-// exposed target agrees with what recordMatchesTarget considers equal.
+// representation: MX/SRV priority is folded into the target string, TXT
+// quotes are stripped, and hostname-valued content loses its trailing dot so
+// the exposed target agrees with what recordMatchesTarget considers equal.
 func recordTarget(record Record) string {
 	switch record.Type {
 	case "TXT":
-		return strings.Trim(record.Content, "\"")
-	case "MX":
-		content := strings.TrimSuffix(record.Content, ".")
+		return unquoteTXT(record.Content)
+	case "MX", "SRV":
+		// A missing priority is exposed as 0 so the target always carries the
+		// numeric prefix parseTarget requires on the way back in.
+		priority := 0
 		if record.Priority != nil {
-			return fmt.Sprintf("%d %s", *record.Priority, content)
+			priority = *record.Priority
 		}
-		return content
-	case "CNAME", "NS", "PTR", "SRV":
+		return fmt.Sprintf("%d %s", priority, strings.TrimSuffix(record.Content, "."))
+	case "CNAME", "NS", "PTR":
 		return strings.TrimSuffix(record.Content, ".")
 	}
 	return record.Content
@@ -451,7 +487,7 @@ func recordTarget(record Record) string {
 func normalizeTarget(recordType, target string) string {
 	switch recordType {
 	case "TXT":
-		return strings.Trim(target, "\"")
+		return unquoteTXT(target)
 	case "CNAME", "MX", "NS", "PTR", "SRV":
 		return normalizeDNSName(target)
 	}

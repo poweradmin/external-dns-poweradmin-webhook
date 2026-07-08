@@ -512,7 +512,10 @@ func TestExtractRecordName(t *testing.T) {
 }
 
 func TestParseTarget_MX(t *testing.T) {
-	content, priority := parseTarget("MX", "10 mail.example.com")
+	content, priority, err := parseTarget("MX", "10 mail.example.com")
+	if err != nil {
+		t.Fatalf("parseTarget failed: %v", err)
+	}
 
 	if content != "mail.example.com" {
 		t.Errorf("Expected content 'mail.example.com', got %q", content)
@@ -522,9 +525,48 @@ func TestParseTarget_MX(t *testing.T) {
 	}
 }
 
+// TestParseTarget_MXInvalid verifies malformed MX targets error instead of
+// silently writing the whole target string as content
+func TestParseTarget_MXInvalid(t *testing.T) {
+	for _, target := range []string{"mail.example.com", "abc mail.example.com", "10 ", "10"} {
+		if _, _, err := parseTarget("MX", target); err == nil {
+			t.Errorf("Expected error for MX target %q", target)
+		}
+	}
+}
+
+// TestParseTarget_SRVInvalid verifies incomplete or non-numeric SRV targets
+// are rejected instead of writing partial content
+func TestParseTarget_SRVInvalid(t *testing.T) {
+	for _, target := range []string{"sip.example.com", "10 5 5060", "10 5 5060 ", "10 abc 5060 sip.example.com"} {
+		if _, _, err := parseTarget("SRV", target); err == nil {
+			t.Errorf("Expected error for SRV target %q", target)
+		}
+	}
+}
+
+// TestParseTarget_SRV verifies the SRV priority is split out for PowerAdmin's
+// separate priority field, leaving "weight port target" as content
+func TestParseTarget_SRV(t *testing.T) {
+	content, priority, err := parseTarget("SRV", "10 5 5060 sip.example.com")
+	if err != nil {
+		t.Fatalf("parseTarget failed: %v", err)
+	}
+
+	if content != "5 5060 sip.example.com" {
+		t.Errorf("Expected content '5 5060 sip.example.com', got %q", content)
+	}
+	if priority == nil || *priority != 10 {
+		t.Errorf("Expected priority 10, got %v", priority)
+	}
+}
+
 func TestParseTarget_TXT(t *testing.T) {
 	// Input with quotes should be normalized and re-quoted
-	content, priority := parseTarget("TXT", "\"v=spf1 include:example.com ~all\"")
+	content, priority, err := parseTarget("TXT", "\"v=spf1 include:example.com ~all\"")
+	if err != nil {
+		t.Fatalf("parseTarget failed: %v", err)
+	}
 	if content != "\"v=spf1 include:example.com ~all\"" {
 		t.Errorf("Expected quoted content, got %q", content)
 	}
@@ -533,14 +575,24 @@ func TestParseTarget_TXT(t *testing.T) {
 	}
 
 	// Input without quotes should get quotes added
-	content2, _ := parseTarget("TXT", "v=spf1 include:example.com ~all")
+	content2, _, _ := parseTarget("TXT", "v=spf1 include:example.com ~all")
 	if content2 != "\"v=spf1 include:example.com ~all\"" {
 		t.Errorf("Expected quoted content, got %q", content2)
+	}
+
+	// Quotes that are part of the value must survive: only the surrounding
+	// pair is stripped before re-quoting
+	content3, _, _ := parseTarget("TXT", "\"\"inner\"\"")
+	if content3 != "\"\"inner\"\"" {
+		t.Errorf("Expected inner quotes preserved, got %q", content3)
 	}
 }
 
 func TestParseTarget_A(t *testing.T) {
-	content, priority := parseTarget("A", "192.168.1.1")
+	content, priority, err := parseTarget("A", "192.168.1.1")
+	if err != nil {
+		t.Fatalf("parseTarget failed: %v", err)
+	}
 
 	if content != "192.168.1.1" {
 		t.Errorf("Expected content '192.168.1.1', got %q", content)
@@ -554,13 +606,92 @@ func TestParseTarget_LUA(t *testing.T) {
 	// LUA content carries an embedded query type plus a quoted Lua expression and
 	// must round-trip verbatim: no quote stripping, no priority parsing.
 	target := "A \"ifurlup('https://example.com', {'192.0.2.1','198.51.100.1'})\""
-	content, priority := parseTarget("LUA", target)
+	content, priority, err := parseTarget("LUA", target)
+	if err != nil {
+		t.Fatalf("parseTarget failed: %v", err)
+	}
 
 	if content != target {
 		t.Errorf("Expected content unchanged %q, got %q", target, content)
 	}
 	if priority != nil {
 		t.Error("Expected nil priority for LUA record")
+	}
+}
+
+// TestRecords_SRVWithPriority verifies SRV records round-trip: the priority
+// stored separately by PowerAdmin is folded back into the target
+func TestRecords_SRVWithPriority(t *testing.T) {
+	priority := 10
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "_sip._tcp.example.com", Type: "SRV", Content: "5 5060 sip.example.com", TTL: 300, Priority: &priority},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	if len(endpoints) != 1 {
+		t.Fatalf("Expected 1 endpoint, got %d", len(endpoints))
+	}
+
+	expected := "10 5 5060 sip.example.com"
+	if endpoints[0].Targets[0] != expected {
+		t.Errorf("Expected SRV target %q, got %q", expected, endpoints[0].Targets[0])
+	}
+}
+
+// TestCreateRecord_SRV verifies the SRV priority is sent in the priority field
+// rather than embedded in content
+func TestCreateRecord_SRV(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{1: {}}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	changes := &plan.Changes{
+		Create: []*endpoint.Endpoint{
+			{
+				DNSName:    "_sip._tcp.example.com",
+				RecordType: "SRV",
+				Targets:    endpoint.Targets{"10 5 5060 sip.example.com"},
+				RecordTTL:  300,
+			},
+		},
+	}
+
+	if err := provider.ApplyChanges(context.Background(), changes); err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+
+	if len(ms.createCalls) != 1 {
+		t.Fatalf("Expected 1 create call, got %d", len(ms.createCalls))
+	}
+	if ms.createCalls[0].Content != "5 5060 sip.example.com" {
+		t.Errorf("Expected content '5 5060 sip.example.com', got %q", ms.createCalls[0].Content)
+	}
+	if ms.createCalls[0].Priority == nil || *ms.createCalls[0].Priority != 10 {
+		t.Errorf("Expected priority 10, got %v", ms.createCalls[0].Priority)
 	}
 }
 
