@@ -231,9 +231,9 @@ type RecordResponseV1 struct {
 		Name     string `json:"name"`
 		Type     string `json:"type"`
 		Content  string `json:"content"`
-		TTL      int    `json:"ttl"`
-		Priority *int   `json:"priority,omitempty"`
-		Disabled int    `json:"disabled"`
+		TTL      int      `json:"ttl"`
+		Priority *int     `json:"priority,omitempty"`
+		Disabled FlexBool `json:"disabled"`
 	} `json:"data"`
 }
 
@@ -350,7 +350,7 @@ func (c *Client) CreateRecord(ctx context.Context, zoneID int, record CreateReco
 			Content:  response.Data.Content,
 			TTL:      response.Data.TTL,
 			Priority: response.Data.Priority,
-			Disabled: FlexBool(response.Data.Disabled != 0),
+			Disabled: response.Data.Disabled,
 		}, nil
 	}
 

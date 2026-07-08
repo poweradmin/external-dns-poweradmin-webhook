@@ -100,3 +100,28 @@ func TestDeleteRecord_ServerErrorReturnsAPIError(t *testing.T) {
 		t.Errorf("expected parsed API message, got %q", apiErr.Message)
 	}
 }
+
+// The v1 API is PHP-backed and returns disabled inconsistently (bool, int,
+// string); the create response must tolerate every form, same as FlexBool
+// does for record listings.
+func TestCreateRecordV1_DisabledAsBool(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"success":true,"data":{"record_id":42,"name":"www","type":"A","content":"1.1.1.1","ttl":300,"disabled":false}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", APIVersionV1)
+	record, err := client.CreateRecord(context.Background(), 1, CreateRecordRequest{
+		Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300,
+	})
+	if err != nil {
+		t.Fatalf("CreateRecord failed on bool disabled in v1 response: %v", err)
+	}
+	if record.ID != 42 {
+		t.Errorf("expected record ID 42, got %d", record.ID)
+	}
+	if bool(record.Disabled) {
+		t.Error("expected disabled=false")
+	}
+}
