@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 	"sigs.k8s.io/external-dns/endpoint"
@@ -23,7 +24,9 @@ type Provider struct {
 	client       *Client
 	domainFilter *endpoint.DomainFilter
 	dryRun       bool
-	zoneCache    map[string]Zone // map[zoneName]Zone
+
+	mu        sync.RWMutex
+	zoneCache []Zone
 }
 
 // NewProvider creates a new PowerAdmin provider
@@ -41,15 +44,14 @@ func NewProvider(baseURL, apiKey string, apiVersion APIVersion, domainFilter *en
 		client:       client,
 		domainFilter: domainFilter,
 		dryRun:       dryRun,
-		zoneCache:    make(map[string]Zone),
 	}, nil
 }
 
 // Records returns all DNS records managed by this provider
 func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
-	zones, err := p.client.ListZones(ctx)
+	zones, err := p.refreshZoneCache(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list zones: %w", err)
+		return nil, err
 	}
 
 	var endpoints []*endpoint.Endpoint
@@ -66,14 +68,6 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 		// Aggregation is scoped per zone so records shadowed across
 		// overlapping zones keep their zone attribution.
 		byKey := make(map[endpointKey]*endpoint.Endpoint)
-		// Apply domain filter
-		if !p.domainFilter.Match(zone.Name) {
-			log.Debugf("Skipping zone %s: does not match domain filter", zone.Name)
-			continue
-		}
-
-		// Cache zone for later use
-		p.zoneCache[zone.Name] = zone
 
 		// A partial view must fail the whole call: silently dropping a zone
 		// would make external-dns treat its records as deleted and recreate
@@ -133,18 +127,15 @@ func (p *Provider) ApplyChanges(ctx context.Context, changes *plan.Changes) erro
 	}
 
 	// Refresh zone cache
-	zones, err := p.client.ListZones(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list zones: %w", err)
-	}
-	for _, zone := range zones {
-		p.zoneCache[zone.Name] = zone
+	if _, err := p.refreshZoneCache(ctx); err != nil {
+		return err
 	}
 
-	// Process creates
-	for _, ep := range changes.Create {
-		if err := p.createRecord(ctx, ep); err != nil {
-			return fmt.Errorf("failed to create record %s: %w", ep.DNSName, err)
+	// Process deletes first so a record-type change (e.g. CNAME to A) does not
+	// try to create alongside a conflicting record
+	for _, ep := range changes.Delete {
+		if err := p.deleteRecord(ctx, ep); err != nil {
+			return fmt.Errorf("failed to delete record %s: %w", ep.DNSName, err)
 		}
 	}
 
@@ -157,14 +148,42 @@ func (p *Provider) ApplyChanges(ctx context.Context, changes *plan.Changes) erro
 		}
 	}
 
-	// Process deletes
-	for _, ep := range changes.Delete {
-		if err := p.deleteRecord(ctx, ep); err != nil {
-			return fmt.Errorf("failed to delete record %s: %w", ep.DNSName, err)
+	// Process creates
+	for _, ep := range changes.Create {
+		if err := p.createRecord(ctx, ep); err != nil {
+			return fmt.Errorf("failed to create record %s: %w", ep.DNSName, err)
 		}
 	}
 
 	return nil
+}
+
+// refreshZoneCache replaces the zone cache with the current set of zones
+// matching the domain filter and returns that set. Replacing rather than
+// merging evicts zones deleted from PowerAdmin.
+func (p *Provider) refreshZoneCache(ctx context.Context) ([]Zone, error) {
+	zones, err := p.client.ListZones(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list zones: %w", err)
+	}
+
+	var filtered []Zone
+	for _, zone := range zones {
+		// MatchParent keeps zones hosting a narrower filter: with
+		// DOMAIN_FILTER=app.example.com, records still live in the
+		// example.com zone.
+		if !p.domainFilter.Match(zone.Name) && !p.domainFilter.MatchParent(zone.Name) {
+			log.Debugf("Skipping zone %s: does not match domain filter", zone.Name)
+			continue
+		}
+		filtered = append(filtered, zone)
+	}
+
+	p.mu.Lock()
+	p.zoneCache = filtered
+	p.mu.Unlock()
+
+	return filtered, nil
 }
 
 // AdjustEndpoints modifies endpoints before they are applied
@@ -378,14 +397,17 @@ func claimRecords(records []Record, dnsName, recordType string, targets endpoint
 // findZoneForName finds the zone that contains the given canonical DNS name,
 // preferring the longest match so nested zones win over their parents
 func (p *Provider) findZoneForName(dnsName string) (*Zone, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
 	var matchedZone *Zone
 	var maxLength int
 
-	for zoneName, zone := range p.zoneCache {
-		if zoneContains(zoneName, dnsName) && len(zoneName) > maxLength {
+	for _, zone := range p.zoneCache {
+		if zoneContains(zone.Name, dnsName) && len(zone.Name) > maxLength {
 			z := zone
 			matchedZone = &z
-			maxLength = len(zoneName)
+			maxLength = len(zone.Name)
 		}
 	}
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"sigs.k8s.io/external-dns/endpoint"
@@ -19,6 +20,7 @@ import (
 // mockServer creates a test server that tracks API calls
 type mockServer struct {
 	server          *httptest.Server
+	mu              sync.Mutex // guards all fields below across handler goroutines
 	zones           []Zone
 	records         map[int][]Record // zoneID -> records
 	failRecordsList map[int]bool     // zoneID -> respond 500 to record listing
@@ -48,6 +50,8 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 
 	// List zones
 	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, _ *http.Request) {
+		ms.mu.Lock()
+		defer ms.mu.Unlock()
 		resp := ZonesResponseV2{Success: true}
 		resp.Data.Zones = ms.zones
 		_ = json.NewEncoder(w).Encode(resp)
@@ -55,6 +59,8 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 
 	// Zone records - handles all /api/v2/zones/{id}/* paths
 	mux.HandleFunc("/api/v2/zones/", func(w http.ResponseWriter, r *http.Request) {
+		ms.mu.Lock()
+		defer ms.mu.Unlock()
 		path := r.URL.Path
 
 		// Parse zone ID and optional record ID
@@ -158,7 +164,7 @@ func TestUpdateRecord_MultipleTargets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	// Update both targets to new values
 	oldEp := &endpoint.Endpoint{
@@ -212,7 +218,7 @@ func TestUpdateRecord_DuplicateTargets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	// Update duplicate targets to different new values
 	oldEp := &endpoint.Endpoint{
@@ -326,7 +332,7 @@ func TestUpdateRecord_AddTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	oldEp := &endpoint.Endpoint{
 		DNSName:    "www.example.com",
@@ -378,7 +384,7 @@ func TestUpdateRecord_RemoveTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	oldEp := &endpoint.Endpoint{
 		DNSName:    "www.example.com",
@@ -426,7 +432,7 @@ func TestUpdateRecord_RecreatesDriftedRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	oldEp := &endpoint.Endpoint{
 		DNSName:    "www.example.com",
@@ -999,6 +1005,104 @@ func TestRecords_FailsOnZoneListError(t *testing.T) {
 	}
 }
 
+// TestApplyChanges_NarrowerFilterThanZone verifies a domain filter scoped to a
+// subdomain still finds the parent zone that hosts those records
+func TestApplyChanges_NarrowerFilterThanZone(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	ms := newMockServer(zones, map[int][]Record{1: {}})
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"app.example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	changes := &plan.Changes{
+		Create: []*endpoint.Endpoint{
+			{DNSName: "www.app.example.com", RecordType: "A", Targets: endpoint.Targets{"1.1.1.1"}, RecordTTL: 300},
+		},
+	}
+
+	if err := provider.ApplyChanges(context.Background(), changes); err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+
+	if len(ms.createCalls) != 1 {
+		t.Fatalf("Expected 1 create call, got %d", len(ms.createCalls))
+	}
+	if ms.createCalls[0].Name != "www.app" {
+		t.Errorf("Expected record name www.app, got %q", ms.createCalls[0].Name)
+	}
+}
+
+// TestZoneCache_EvictsRemovedZones verifies a zone deleted from PowerAdmin
+// disappears from the cache on refresh instead of lingering forever
+func TestZoneCache_EvictsRemovedZones(t *testing.T) {
+	zones := []Zone{
+		{ID: 1, Name: "example.com"},
+		{ID: 2, Name: "other.org"},
+	}
+	ms := newMockServer(zones, map[int][]Record{1: {}, 2: {}})
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com", "other.org"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	if _, err := provider.Records(context.Background()); err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+	if _, err := provider.findZoneForName("www.other.org"); err != nil {
+		t.Fatalf("Expected other.org in cache: %v", err)
+	}
+
+	// Zone disappears from PowerAdmin
+	ms.mu.Lock()
+	ms.zones = zones[:1]
+	ms.mu.Unlock()
+	if _, err := provider.Records(context.Background()); err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+	if _, err := provider.findZoneForName("www.other.org"); err == nil {
+		t.Error("Expected removed zone to be evicted from the cache")
+	}
+}
+
+// TestProvider_ConcurrentAccess exercises Records and ApplyChanges from
+// concurrent requests; the race detector flags unsynchronized cache access
+func TestProvider_ConcurrentAccess(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	ms := newMockServer(zones, map[int][]Record{1: {}})
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, _ = provider.Records(context.Background())
+		}()
+		go func() {
+			defer wg.Done()
+			_ = provider.ApplyChanges(context.Background(), &plan.Changes{
+				Create: []*endpoint.Endpoint{
+					{DNSName: "www.example.com", RecordType: "A", Targets: endpoint.Targets{"1.1.1.1"}, RecordTTL: 300},
+				},
+			})
+		}()
+	}
+	wg.Wait()
+}
+
 // TestRecords_EmptyZone verifies handling of zones with no records
 func TestRecords_EmptyZone(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
@@ -1078,9 +1182,7 @@ func TestFindZoneForEndpoint(t *testing.T) {
 	}
 
 	// Populate zone cache
-	for _, z := range zones {
-		provider.zoneCache[z.Name] = z
-	}
+	provider.zoneCache = zones
 
 	tests := []struct {
 		dnsName      string
@@ -1115,7 +1217,7 @@ func TestFindZoneForEndpoint_NoMatch(t *testing.T) {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
 
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	for _, dnsName := range []string{"www.other.org", "notexample.com", "www.notexample.com"} {
 		if _, err := provider.findZoneForName(dnsName); err == nil {
@@ -1138,7 +1240,7 @@ func TestCreateRecord_MixedCaseEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	ep := &endpoint.Endpoint{
 		DNSName:    "WWW.Example.COM",
@@ -1595,7 +1697,7 @@ func TestV1API_UpdateRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	oldEp := &endpoint.Endpoint{
 		DNSName:    "www.example.com",
@@ -1796,7 +1898,7 @@ func TestUpdateRecord_TXTUnquotedContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	// external-dns stores unquoted targets (Records() strips quotes)
 	oldEp := &endpoint.Endpoint{
@@ -1843,7 +1945,7 @@ func TestDeleteRecord_TXTUnquotedContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
-	provider.zoneCache["example.com"] = zones[0]
+	provider.zoneCache = zones[:1]
 
 	err = provider.deleteRecord(context.Background(), &endpoint.Endpoint{
 		DNSName:    "example.com",
