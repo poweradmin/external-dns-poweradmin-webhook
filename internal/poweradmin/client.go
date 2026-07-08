@@ -227,10 +227,10 @@ type RecordResponseV2 struct {
 type RecordResponseV1 struct {
 	ResponseStatus
 	Data struct {
-		RecordID int    `json:"record_id"`
-		Name     string `json:"name"`
-		Type     string `json:"type"`
-		Content  string `json:"content"`
+		RecordID int      `json:"record_id"`
+		Name     string   `json:"name"`
+		Type     string   `json:"type"`
+		Content  string   `json:"content"`
 		TTL      int      `json:"ttl"`
 		Priority *int     `json:"priority,omitempty"`
 		Disabled FlexBool `json:"disabled"`

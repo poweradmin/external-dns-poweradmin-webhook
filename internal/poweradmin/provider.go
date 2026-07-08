@@ -112,6 +112,15 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 				continue
 			}
 
+			// Writes always target the most specific zone containing a name
+			// (findZoneForName), so a record shadowed by a more specific zone
+			// cannot be managed from here; exposing it would also collide
+			// with the owning zone's endpoint of the same name and type.
+			if owner, err := p.findZoneForName(dnsName); err == nil && owner.ID != zone.ID {
+				log.Debugf("Skipping record %s in zone %s: shadowed by zone %s", dnsName, zone.Name, owner.Name)
+				continue
+			}
+
 			target := recordTarget(record)
 			key := endpointKey{dnsName: dnsName, recordType: record.Type}
 			if ep, ok := byKey[key]; ok {

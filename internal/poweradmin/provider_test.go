@@ -2399,3 +2399,54 @@ func TestRecords_UniformTTLsKeepTTL(t *testing.T) {
 		t.Errorf("Expected TTL 300, got %d", endpoints[0].RecordTTL)
 	}
 }
+
+// TestRecords_SkipsShadowedRecords verifies that a record whose name is owned
+// by a more specific zone is not exposed from the parent zone: writes always
+// go to the most specific zone, and duplicate (name, type) endpoints would
+// collide in the external-dns plan.
+func TestRecords_SkipsShadowedRecords(t *testing.T) {
+	zones := []Zone{
+		{ID: 1, Name: "example.com"},
+		{ID: 2, Name: "app.example.com"},
+	}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			// Shadowed: app.example.com is its own zone.
+			{ID: 102, ZoneID: 1, Name: "app.example.com", Type: "A", Content: "9.9.9.9", TTL: 300},
+		},
+		2: {
+			{ID: 201, ZoneID: 2, Name: "app.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	byName := make(map[string]*endpoint.Endpoint)
+	for _, ep := range endpoints {
+		byName[ep.DNSName] = ep
+	}
+
+	if len(endpoints) != 2 {
+		t.Errorf("Expected 2 endpoints (shadowed record skipped), got %d", len(endpoints))
+	}
+	app, ok := byName["app.example.com"]
+	if !ok {
+		t.Fatal("Expected app.example.com endpoint from its own zone")
+	}
+	if len(app.Targets) != 1 || app.Targets[0] != "2.2.2.2" {
+		t.Errorf("Expected app.example.com to come from the owning zone (2.2.2.2), got %v", app.Targets)
+	}
+}
