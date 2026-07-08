@@ -98,6 +98,13 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 				}
 			}
 
+			// The zone may be admitted as the parent of a narrower filter, so
+			// each record still has to match the filter itself; exposing
+			// out-of-filter names would let external-dns act on them.
+			if !p.domainFilter.Match(dnsName) {
+				continue
+			}
+
 			target := recordTarget(record)
 			key := endpointKey{dnsName: dnsName, recordType: record.Type}
 			if ep, ok := byKey[key]; ok {

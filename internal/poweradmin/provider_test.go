@@ -1036,6 +1036,39 @@ func TestApplyChanges_NarrowerFilterThanZone(t *testing.T) {
 	}
 }
 
+// TestRecords_NarrowerFilterThanZone verifies that when a parent zone is
+// admitted for a subdomain filter, only records matching the filter are
+// exposed as current state
+func TestRecords_NarrowerFilterThanZone(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "www.app.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+		},
+	}
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"app.example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	if len(endpoints) != 1 {
+		t.Fatalf("Expected 1 endpoint, got %d", len(endpoints))
+	}
+	if endpoints[0].DNSName != "www.app.example.com" {
+		t.Errorf("Expected only www.app.example.com, got %s", endpoints[0].DNSName)
+	}
+}
+
 // TestZoneCache_EvictsRemovedZones verifies a zone deleted from PowerAdmin
 // disappears from the cache on refresh instead of lingering forever
 func TestZoneCache_EvictsRemovedZones(t *testing.T) {
