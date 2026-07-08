@@ -18,12 +18,13 @@ import (
 
 // mockServer creates a test server that tracks API calls
 type mockServer struct {
-	server      *httptest.Server
-	zones       []Zone
-	records     map[int][]Record // zoneID -> records
-	createCalls []CreateRecordRequest
-	updateCalls []updateCall
-	deleteCalls []deleteCall
+	server          *httptest.Server
+	zones           []Zone
+	records         map[int][]Record // zoneID -> records
+	failRecordsList map[int]bool     // zoneID -> respond 500 to record listing
+	createCalls     []CreateRecordRequest
+	updateCalls     []updateCall
+	deleteCalls     []deleteCall
 }
 
 type updateCall struct {
@@ -74,6 +75,11 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 
 		switch r.Method {
 		case http.MethodGet:
+			if ms.failRecordsList[zoneID] {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"success":false,"message":"boom"}`))
+				return
+			}
 			if recs, ok := ms.records[zoneID]; ok {
 				resp := RecordsResponseV2Records{Success: true}
 				resp.Data.Records = recs
@@ -966,6 +972,30 @@ func TestRecords_FiltersByDomain(t *testing.T) {
 
 	if len(endpoints) > 0 && endpoints[0].DNSName != "www.example.com" {
 		t.Errorf("Expected www.example.com, got %s", endpoints[0].DNSName)
+	}
+}
+
+// TestRecords_FailsOnZoneListError verifies a zone whose records cannot be
+// listed fails the whole call instead of returning a partial view, which
+// would make external-dns recreate the missing records as duplicates
+func TestRecords_FailsOnZoneListError(t *testing.T) {
+	zones := []Zone{
+		{ID: 1, Name: "example.com"},
+		{ID: 2, Name: "broken.org"},
+	}
+
+	ms := newMockServer(zones, map[int][]Record{1: {}})
+	ms.failRecordsList = map[int]bool{2: true}
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com", "broken.org"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	if _, err := provider.Records(context.Background()); err == nil {
+		t.Fatal("Expected Records to fail when a zone's records cannot be listed")
 	}
 }
 

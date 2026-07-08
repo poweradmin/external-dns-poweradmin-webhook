@@ -75,10 +75,12 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 		// Cache zone for later use
 		p.zoneCache[zone.Name] = zone
 
+		// A partial view must fail the whole call: silently dropping a zone
+		// would make external-dns treat its records as deleted and recreate
+		// them as duplicates on the next apply.
 		records, err := p.client.ListRecords(ctx, zone.ID)
 		if err != nil {
-			log.Warnf("Failed to list records for zone %s: %v", zone.Name, err)
-			continue
+			return nil, fmt.Errorf("failed to list records for zone %s: %w", zone.Name, err)
 		}
 
 		for _, record := range records {
