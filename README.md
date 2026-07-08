@@ -49,7 +49,7 @@ The webhook is configured via environment variables:
 | `METRICS_HOST` | No | `0.0.0.0` | Metrics/health server bind address |
 | `METRICS_PORT` | No | `8080` | Metrics/health server port |
 | `SERVER_READ_TIMEOUT` | No | `5s` | HTTP server read timeout |
-| `SERVER_WRITE_TIMEOUT` | No | `10s` | HTTP server write timeout |
+| `SERVER_WRITE_TIMEOUT` | No | `120s` | HTTP server write timeout; must exceed the time a full multi-zone records sweep can take against PowerAdmin |
 | `LOG_LEVEL` | No | `info` | Log level (debug, info, warn, error) |
 | `LOG_FORMAT` | No | `text` | Log format (text, json) |
 | `DRY_RUN` | No | `false` | Enable dry-run mode |

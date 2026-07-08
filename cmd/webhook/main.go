@@ -49,9 +49,12 @@ type Config struct {
 	MetricsHost string `env:"METRICS_HOST" envDefault:"0.0.0.0"`
 	MetricsPort int    `env:"METRICS_PORT" envDefault:"8080"`
 
-	// Server timeouts
+	// Server timeouts. The write timeout bounds whole handler runs: /records
+	// makes one PowerAdmin call per zone, each allowed up to the client's 30s
+	// timeout, so the default must comfortably exceed a slow multi-zone sweep
+	// or the response is cut off mid-write.
 	ServerReadTimeout  time.Duration `env:"SERVER_READ_TIMEOUT" envDefault:"5s"`
-	ServerWriteTimeout time.Duration `env:"SERVER_WRITE_TIMEOUT" envDefault:"10s"`
+	ServerWriteTimeout time.Duration `env:"SERVER_WRITE_TIMEOUT" envDefault:"120s"`
 
 	// PowerAdmin configuration
 	PowerAdminURL        string `env:"POWERADMIN_URL,required"`
