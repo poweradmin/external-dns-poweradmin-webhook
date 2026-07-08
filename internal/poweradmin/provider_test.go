@@ -2328,3 +2328,74 @@ func TestAdjustEndpoints_FiltersUnmanageableEndpoints(t *testing.T) {
 		t.Errorf("Expected CNAME trimmed to first target, got %v", cname.Targets)
 	}
 }
+
+// TestRecords_MixedTTLsReportUnconfigured verifies that a record set whose
+// members carry different TTLs is exposed with an unconfigured TTL, so the
+// plan always sees a TTL difference from the desired value and repairs the
+// drifted records.
+func TestRecords_MixedTTLsReportUnconfigured(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 600},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	if len(endpoints) != 1 {
+		t.Fatalf("Expected 1 aggregated endpoint, got %d", len(endpoints))
+	}
+	if len(endpoints[0].Targets) != 2 {
+		t.Errorf("Expected 2 targets, got %v", endpoints[0].Targets)
+	}
+	if endpoints[0].RecordTTL.IsConfigured() {
+		t.Errorf("Expected unconfigured TTL for mixed-TTL record set, got %d", endpoints[0].RecordTTL)
+	}
+}
+
+// TestRecords_UniformTTLsKeepTTL verifies the mixed-TTL handling does not
+// disturb record sets whose TTLs agree.
+func TestRecords_UniformTTLsKeepTTL(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	if len(endpoints) != 1 {
+		t.Fatalf("Expected 1 aggregated endpoint, got %d", len(endpoints))
+	}
+	if int(endpoints[0].RecordTTL) != 300 {
+		t.Errorf("Expected TTL 300, got %d", endpoints[0].RecordTTL)
+	}
+}

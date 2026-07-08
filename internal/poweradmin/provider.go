@@ -116,6 +116,14 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 			key := endpointKey{dnsName: dnsName, recordType: record.Type}
 			if ep, ok := byKey[key]; ok {
 				ep.Targets = append(ep.Targets, target)
+				// A single endpoint cannot carry mixed per-record TTLs.
+				// Reporting any one of them would hide the drift from the
+				// plan; an unconfigured TTL differs from whatever TTL the
+				// user pinned, so an update fires and rewrites the strays.
+				if int(ep.RecordTTL) != record.TTL {
+					log.Warnf("Record set %s %s has mixed TTLs, reporting unconfigured TTL until it converges", dnsName, record.Type)
+					ep.RecordTTL = 0
+				}
 				continue
 			}
 
