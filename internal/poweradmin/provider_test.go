@@ -932,19 +932,19 @@ func TestFindZoneForEndpoint(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		ep := &endpoint.Endpoint{DNSName: tt.dnsName}
-		zone, err := provider.findZoneForEndpoint(ep)
+		zone, err := provider.findZoneForName(tt.dnsName)
 		if err != nil {
-			t.Errorf("findZoneForEndpoint(%s) error: %v", tt.dnsName, err)
+			t.Errorf("findZoneForName(%s) error: %v", tt.dnsName, err)
 			continue
 		}
 		if zone.Name != tt.expectedZone {
-			t.Errorf("findZoneForEndpoint(%s) = %s, want %s", tt.dnsName, zone.Name, tt.expectedZone)
+			t.Errorf("findZoneForName(%s) = %s, want %s", tt.dnsName, zone.Name, tt.expectedZone)
 		}
 	}
 }
 
-// TestFindZoneForEndpoint_NoMatch verifies error when no zone matches
+// TestFindZoneForEndpoint_NoMatch verifies error when no zone matches,
+// including names that merely share a suffix without a label boundary
 func TestFindZoneForEndpoint_NoMatch(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 
@@ -956,10 +956,108 @@ func TestFindZoneForEndpoint_NoMatch(t *testing.T) {
 
 	provider.zoneCache["example.com"] = zones[0]
 
-	ep := &endpoint.Endpoint{DNSName: "www.other.org"}
-	_, err = provider.findZoneForEndpoint(ep)
-	if err == nil {
-		t.Error("Expected error for non-matching domain")
+	for _, dnsName := range []string{"www.other.org", "notexample.com", "www.notexample.com"} {
+		if _, err := provider.findZoneForName(dnsName); err == nil {
+			t.Errorf("Expected error for non-matching domain %s", dnsName)
+		}
+	}
+}
+
+// TestCreateRecord_MixedCaseEndpoint verifies mixed-case endpoint names are
+// canonicalized before zone matching and record-name extraction
+func TestCreateRecord_MixedCaseEndpoint(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{1: {}}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache["example.com"] = zones[0]
+
+	ep := &endpoint.Endpoint{
+		DNSName:    "WWW.Example.COM",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+		RecordTTL:  300,
+	}
+
+	if err := provider.createRecord(context.Background(), ep); err != nil {
+		t.Fatalf("createRecord failed: %v", err)
+	}
+
+	if len(ms.createCalls) != 1 {
+		t.Fatalf("Expected 1 create call, got %d", len(ms.createCalls))
+	}
+	if ms.createCalls[0].Name != "www" {
+		t.Errorf("Expected record name www, got %q", ms.createCalls[0].Name)
+	}
+}
+
+// TestRecordMatchesTarget_HostnameContent verifies hostname-valued content
+// matches regardless of case and trailing dots
+func TestRecordMatchesTarget_HostnameContent(t *testing.T) {
+	priority := 10
+	tests := []struct {
+		name   string
+		record Record
+		target string
+		want   bool
+	}{
+		{"CNAME case and dot", Record{Type: "CNAME", Content: "Target.Example.COM."}, "target.example.com", true},
+		{"MX case and dot", Record{Type: "MX", Content: "Mail.Example.COM.", Priority: &priority}, "10 mail.example.com", true},
+		{"MX priority mismatch", Record{Type: "MX", Content: "mail.example.com", Priority: &priority}, "20 mail.example.com", false},
+		{"A exact", Record{Type: "A", Content: "1.1.1.1"}, "1.1.1.1", true},
+		{"CNAME different host", Record{Type: "CNAME", Content: "other.example.com"}, "target.example.com", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := recordMatchesTarget(tt.record, tt.target); got != tt.want {
+				t.Errorf("recordMatchesTarget(%v, %q) = %v, want %v", tt.record, tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRecords_NormalizesMixedCaseNames verifies zone and record names from the
+// API are canonicalized so matching does not depend on case or trailing dots
+func TestRecords_NormalizesMixedCaseNames(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "Example.COM"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "WWW.Example.COM", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "www.example.com.", Type: "A", Content: "2.2.2.2", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	endpoints, err := provider.Records(context.Background())
+	if err != nil {
+		t.Fatalf("Records failed: %v", err)
+	}
+
+	// Both case variants canonicalize to the same name and aggregate
+	if len(endpoints) != 1 {
+		t.Fatalf("Expected 1 endpoint, got %d", len(endpoints))
+	}
+	if endpoints[0].DNSName != "www.example.com" {
+		t.Errorf("Expected canonical name www.example.com, got %s", endpoints[0].DNSName)
+	}
+	if len(endpoints[0].Targets) != 2 {
+		t.Errorf("Expected 2 targets, got %v", endpoints[0].Targets)
 	}
 }
 

@@ -82,7 +82,7 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 
 		for _, record := range records {
 			// Skip SOA and NS records at zone apex
-			if record.Type == "SOA" || (record.Type == "NS" && strings.EqualFold(record.Name, zone.Name)) {
+			if record.Type == "SOA" || (record.Type == "NS" && record.Name == zone.Name) {
 				continue
 			}
 
@@ -93,7 +93,7 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 
 			// Build the full DNS name
 			dnsName := record.Name
-			if !strings.HasSuffix(dnsName, zone.Name) {
+			if !zoneContains(zone.Name, dnsName) {
 				if dnsName == "@" || dnsName == "" {
 					dnsName = zone.Name
 				} else {
@@ -102,7 +102,7 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 			}
 
 			target := recordTarget(record)
-			key := endpointKey{dnsName: strings.ToLower(dnsName), recordType: record.Type}
+			key := endpointKey{dnsName: dnsName, recordType: record.Type}
 			if ep, ok := byKey[key]; ok {
 				ep.Targets = append(ep.Targets, target)
 				continue
@@ -177,12 +177,13 @@ func (p *Provider) GetDomainFilter() endpoint.DomainFilterInterface {
 
 // createRecord creates DNS records for all targets of an endpoint
 func (p *Provider) createRecord(ctx context.Context, ep *endpoint.Endpoint) error {
-	zone, err := p.findZoneForEndpoint(ep)
+	dnsName := normalizeDNSName(ep.DNSName)
+	zone, err := p.findZoneForName(dnsName)
 	if err != nil {
 		return err
 	}
 
-	recordName := extractRecordName(ep.DNSName, zone.Name)
+	recordName := extractRecordName(dnsName, zone.Name)
 	ttl := endpointTTL(ep)
 
 	for _, target := range ep.Targets {
@@ -199,7 +200,8 @@ func (p *Provider) createRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 // targets that are no longer desired are deleted. This keeps the zone correct
 // even when the number of targets grows or shrinks between old and new.
 func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endpoint) error {
-	zone, err := p.findZoneForEndpoint(newEp)
+	dnsName := normalizeDNSName(newEp.DNSName)
+	zone, err := p.findZoneForName(dnsName)
 	if err != nil {
 		return err
 	}
@@ -210,9 +212,9 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 		return fmt.Errorf("failed to list records for zone %s: %w", zone.Name, err)
 	}
 
-	existing := claimRecords(records, oldEp)
+	existing := claimRecords(records, normalizeDNSName(oldEp.DNSName), oldEp.RecordType, oldEp.Targets)
 	ttl := endpointTTL(newEp)
-	recordName := extractRecordName(newEp.DNSName, zone.Name)
+	recordName := extractRecordName(dnsName, zone.Name)
 
 	// Pair desired targets with records that already match so unchanged
 	// records are left alone.
@@ -280,7 +282,8 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 
 // deleteRecord deletes the records claimed by an endpoint's targets
 func (p *Provider) deleteRecord(ctx context.Context, ep *endpoint.Endpoint) error {
-	zone, err := p.findZoneForEndpoint(ep)
+	dnsName := normalizeDNSName(ep.DNSName)
+	zone, err := p.findZoneForName(dnsName)
 	if err != nil {
 		return err
 	}
@@ -291,7 +294,7 @@ func (p *Provider) deleteRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 		return fmt.Errorf("failed to list records for zone %s: %w", zone.Name, err)
 	}
 
-	for _, record := range claimRecords(records, ep) {
+	for _, record := range claimRecords(records, dnsName, ep.RecordType, ep.Targets) {
 		if err := p.deleteOne(ctx, zone, record); err != nil {
 			return err
 		}
@@ -332,16 +335,17 @@ func (p *Provider) deleteOne(ctx context.Context, zone *Zone, record Record) err
 	return p.client.DeleteRecord(ctx, zone.ID, record.ID)
 }
 
-// claimRecords returns the zone records currently owned by the endpoint: same
+// claimRecords returns the zone records currently owned by an endpoint: same
 // name and type, with content matching one of the endpoint's targets. Targets
 // are consumed as a multiset so duplicate targets claim distinct records.
-func claimRecords(records []Record, ep *endpoint.Endpoint) []Record {
-	remaining := make([]string, len(ep.Targets))
-	copy(remaining, ep.Targets)
+// dnsName must be canonical.
+func claimRecords(records []Record, dnsName, recordType string, targets endpoint.Targets) []Record {
+	remaining := make([]string, len(targets))
+	copy(remaining, targets)
 
 	var claimed []Record
 	for _, record := range records {
-		if !strings.EqualFold(record.Name, ep.DNSName) || record.Type != ep.RecordType {
+		if record.Name != dnsName || record.Type != recordType {
 			continue
 		}
 		for i, target := range remaining {
@@ -355,13 +359,14 @@ func claimRecords(records []Record, ep *endpoint.Endpoint) []Record {
 	return claimed
 }
 
-// findZoneForEndpoint finds the zone that contains the given endpoint
-func (p *Provider) findZoneForEndpoint(ep *endpoint.Endpoint) (*Zone, error) {
+// findZoneForName finds the zone that contains the given canonical DNS name,
+// preferring the longest match so nested zones win over their parents
+func (p *Provider) findZoneForName(dnsName string) (*Zone, error) {
 	var matchedZone *Zone
 	var maxLength int
 
 	for zoneName, zone := range p.zoneCache {
-		if strings.HasSuffix(ep.DNSName, zoneName) && len(zoneName) > maxLength {
+		if zoneContains(zoneName, dnsName) && len(zoneName) > maxLength {
 			z := zone
 			matchedZone = &z
 			maxLength = len(zoneName)
@@ -369,13 +374,21 @@ func (p *Provider) findZoneForEndpoint(ep *endpoint.Endpoint) (*Zone, error) {
 	}
 
 	if matchedZone == nil {
-		return nil, fmt.Errorf("no zone found for endpoint %s", ep.DNSName)
+		return nil, fmt.Errorf("no zone found for endpoint %s", dnsName)
 	}
 
 	return matchedZone, nil
 }
 
-// extractRecordName extracts the record name from the full DNS name
+// zoneContains reports whether dnsName is the zone apex or a name within the
+// zone. A plain suffix check is not enough: "notexample.com" must not match
+// zone "example.com". Both arguments must already be canonical.
+func zoneContains(zoneName, dnsName string) bool {
+	return dnsName == zoneName || strings.HasSuffix(dnsName, "."+zoneName)
+}
+
+// extractRecordName extracts the record name from the full DNS name. Both
+// arguments must already be canonical.
 func extractRecordName(dnsName, zoneName string) string {
 	if dnsName == zoneName {
 		return "@"
@@ -413,25 +426,34 @@ func parseTarget(recordType, target string) (content string, priority *int) {
 }
 
 // recordTarget converts a PowerAdmin record to its external-dns target
-// representation: MX priority is folded into the target string and TXT quotes
-// are stripped. The result is canonical for comparison purposes.
+// representation: MX priority is folded into the target string, TXT quotes
+// are stripped, and hostname-valued content loses its trailing dot so the
+// exposed target agrees with what recordMatchesTarget considers equal.
 func recordTarget(record Record) string {
 	switch record.Type {
 	case "TXT":
 		return strings.Trim(record.Content, "\"")
 	case "MX":
+		content := strings.TrimSuffix(record.Content, ".")
 		if record.Priority != nil {
-			return fmt.Sprintf("%d %s", *record.Priority, record.Content)
+			return fmt.Sprintf("%d %s", *record.Priority, content)
 		}
+		return content
+	case "CNAME", "NS", "PTR", "SRV":
+		return strings.TrimSuffix(record.Content, ".")
 	}
 	return record.Content
 }
 
-// normalizeTarget canonicalizes an endpoint target for comparison. The API may
-// return TXT content quoted or unquoted, and external-dns stores it unquoted.
+// normalizeTarget canonicalizes a target for comparison. The API may return
+// TXT content quoted or unquoted, and hostname-valued content may differ in
+// case or carry a trailing dot without being a different target.
 func normalizeTarget(recordType, target string) string {
-	if recordType == "TXT" {
+	switch recordType {
+	case "TXT":
 		return strings.Trim(target, "\"")
+	case "CNAME", "MX", "NS", "PTR", "SRV":
+		return normalizeDNSName(target)
 	}
 	return target
 }
@@ -439,7 +461,7 @@ func normalizeTarget(recordType, target string) string {
 // recordMatchesTarget reports whether a PowerAdmin record represents the given
 // external-dns target.
 func recordMatchesTarget(record Record, target string) bool {
-	return recordTarget(record) == normalizeTarget(record.Type, target)
+	return normalizeTarget(record.Type, recordTarget(record)) == normalizeTarget(record.Type, target)
 }
 
 // isSupportedRecordType checks if the record type is supported

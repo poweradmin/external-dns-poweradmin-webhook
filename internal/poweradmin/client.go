@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -74,6 +75,19 @@ type Zone struct {
 	Type string `json:"type"`
 }
 
+// UnmarshalJSON canonicalizes the zone name at the decode boundary so every
+// zone coming out of the client compares cleanly.
+func (z *Zone) UnmarshalJSON(data []byte) error {
+	type zone Zone
+	var decoded zone
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	decoded.Name = normalizeDNSName(decoded.Name)
+	*z = Zone(decoded)
+	return nil
+}
+
 // Record represents a DNS record in PowerAdmin
 type Record struct {
 	ID       int      `json:"id"`
@@ -84,6 +98,26 @@ type Record struct {
 	TTL      int      `json:"ttl"`
 	Priority *int     `json:"priority,omitempty"`
 	Disabled FlexBool `json:"disabled"`
+}
+
+// UnmarshalJSON canonicalizes the record name at the decode boundary so every
+// record coming out of the client compares cleanly.
+func (r *Record) UnmarshalJSON(data []byte) error {
+	type record Record
+	var decoded record
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	decoded.Name = normalizeDNSName(decoded.Name)
+	*r = Record(decoded)
+	return nil
+}
+
+// normalizeDNSName canonicalizes a DNS name for comparison: lowercase, no
+// trailing dot. DNS names are case-insensitive and neither the PowerAdmin API
+// nor external-dns guarantees a consistent case.
+func normalizeDNSName(name string) string {
+	return strings.ToLower(strings.TrimSuffix(name, "."))
 }
 
 // CreateRecordRequest represents the request body for creating a record
