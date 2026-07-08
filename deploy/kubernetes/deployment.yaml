@@ -137,6 +137,9 @@ spec:
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5
+            # /readyz calls the PowerAdmin API (up to 5s); the kubelet default
+            # of 1s would mark healthy pods unready on slow responses
+            timeoutSeconds: 5
           resources:
             requests:
               memory: "32Mi"

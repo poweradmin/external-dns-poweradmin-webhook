@@ -35,6 +35,10 @@ const banner = `
 
 var Version = "dev"
 
+// readinessTimeout bounds the PowerAdmin call in /readyz. It must not exceed
+// the readiness probe timeoutSeconds in deploy/kubernetes/deployment.yaml.
+const readinessTimeout = 5 * time.Second
+
 // Config holds the configuration for the webhook
 type Config struct {
 	// Server configuration
@@ -85,11 +89,12 @@ func main() {
 	// Regex filter overrides regular domain filter (mutually exclusive)
 	var domainFilter *endpoint.DomainFilter
 	if cfg.RegexpDomainFilter != "" {
+		regexFilter, err := regexp.Compile(cfg.RegexpDomainFilter)
+		if err != nil {
+			log.Fatalf("Invalid regex domain filter %q: %v", cfg.RegexpDomainFilter, err)
+		}
 		log.Infof("Using regex domain filter: %s", cfg.RegexpDomainFilter)
-		domainFilter = endpoint.NewRegexDomainFilter(
-			regexp.MustCompile(cfg.RegexpDomainFilter),
-			nil,
-		)
+		domainFilter = endpoint.NewRegexDomainFilter(regexFilter, nil)
 	} else {
 		domainFilter = endpoint.NewDomainFilterWithExclusions(cfg.DomainFilter, cfg.ExcludeDomainFilter)
 		if len(cfg.DomainFilter) > 0 {
@@ -134,7 +139,7 @@ func main() {
 	// Setup metrics/health router
 	metricsRouter := chi.NewRouter()
 	metricsRouter.Get("/healthz", healthHandler)
-	metricsRouter.Get("/readyz", healthHandler)
+	metricsRouter.Get("/readyz", readyHandler(provider))
 	metricsRouter.Handle("/metrics", promhttp.Handler())
 
 	// Create HTTP servers
@@ -210,4 +215,22 @@ func setupLogging(level, format string) {
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
+}
+
+// readyHandler reports ready only when the PowerAdmin API is reachable, so
+// traffic is not routed to a webhook that cannot serve it
+func readyHandler(provider *poweradmin.Provider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), readinessTimeout)
+		defer cancel()
+
+		if err := provider.Health(ctx); err != nil {
+			log.Warnf("Readiness check failed: %v", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("PowerAdmin unreachable"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}
 }

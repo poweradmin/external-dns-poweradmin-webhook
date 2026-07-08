@@ -186,6 +186,12 @@ func (p *Provider) refreshZoneCache(ctx context.Context) ([]Zone, error) {
 	return filtered, nil
 }
 
+// Health reports whether the PowerAdmin API is reachable and responding
+func (p *Provider) Health(ctx context.Context) error {
+	_, err := p.client.ListZones(ctx)
+	return err
+}
+
 // AdjustEndpoints modifies endpoints before they are applied
 func (p *Provider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
 	// No adjustments needed for PowerAdmin

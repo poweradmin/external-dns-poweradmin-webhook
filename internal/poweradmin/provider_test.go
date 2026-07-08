@@ -1103,6 +1103,28 @@ func TestProvider_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+// Health reflects PowerAdmin reachability: nil when the API responds, an
+// error when it does not.
+func TestProviderHealth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"data":{"zones":[]}}`))
+	}))
+
+	provider, err := NewProvider(server.URL, "test-key", APIVersionV2, nil, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	if err := provider.Health(context.Background()); err != nil {
+		t.Errorf("expected healthy provider, got: %v", err)
+	}
+
+	server.Close()
+	if err := provider.Health(context.Background()); err == nil {
+		t.Error("expected error when PowerAdmin is unreachable")
+	}
+}
+
 // TestRecords_EmptyZone verifies handling of zones with no records
 func TestRecords_EmptyZone(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
