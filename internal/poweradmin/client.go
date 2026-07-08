@@ -141,11 +141,37 @@ type UpdateRecordRequest struct {
 	Disabled bool   `json:"disabled"`
 }
 
+// ResponseStatus is the success/message envelope shared by all PowerAdmin
+// API responses.
+type ResponseStatus struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+func (r ResponseStatus) status() (bool, string) { return r.Success, r.Message }
+
+// statusCarrier is satisfied by every response type embedding ResponseStatus.
+type statusCarrier interface {
+	status() (bool, string)
+}
+
+// decodeResponse unmarshals an API response and turns success=false into an
+// error. what names the payload for error messages (e.g. "zones").
+func decodeResponse[T statusCarrier](body []byte, what string) (T, error) {
+	var response T
+	if err := json.Unmarshal(body, &response); err != nil {
+		return response, fmt.Errorf("failed to unmarshal %s response: %w", what, err)
+	}
+	if ok, message := response.status(); !ok {
+		return response, fmt.Errorf("API returned error: %s", message)
+	}
+	return response, nil
+}
+
 // APIResponse represents the standard PowerAdmin API response
 type APIResponse struct {
-	Success bool            `json:"success"`
-	Message string          `json:"message"`
-	Data    json.RawMessage `json:"data"`
+	ResponseStatus
+	Data json.RawMessage `json:"data"`
 }
 
 // APIError represents a non-2xx response from the PowerAdmin API. It carries the
@@ -161,52 +187,46 @@ func (e *APIError) Error() string {
 
 // ZonesResponseV2 represents the response from the zones list endpoint (V2 API)
 type ZonesResponseV2 struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    struct {
+	ResponseStatus
+	Data struct {
 		Zones []Zone `json:"zones"`
 	} `json:"data"`
 }
 
 // ZonesResponseV1 represents the response from the zones list endpoint (V1 API)
 type ZonesResponseV1 struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    []Zone `json:"data"`
+	ResponseStatus
+	Data []Zone `json:"data"`
 }
 
 // RecordsResponseV1 represents the response from the records list endpoint (V1 API)
 // V1 returns the records array directly in the data field.
 type RecordsResponseV1 struct {
-	Success bool     `json:"success"`
-	Message string   `json:"message"`
-	Data    []Record `json:"data"`
+	ResponseStatus
+	Data []Record `json:"data"`
 }
 
 // RecordsResponseV2Records represents the response from the records list endpoint (V2 API)
 // V2 wraps records inside a data.records object.
 type RecordsResponseV2Records struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    struct {
+	ResponseStatus
+	Data struct {
 		Records []Record `json:"records"`
 	} `json:"data"`
 }
 
 // RecordResponseV2 represents the response from a single record operation (V2 API)
 type RecordResponseV2 struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    struct {
+	ResponseStatus
+	Data struct {
 		Record Record `json:"record"`
 	} `json:"data"`
 }
 
 // RecordResponseV1 represents the response from a single record operation (V1 API)
 type RecordResponseV1 struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    struct {
+	ResponseStatus
+	Data struct {
 		RecordID int    `json:"record_id"`
 		Name     string `json:"name"`
 		Type     string `json:"type"`
@@ -269,26 +289,18 @@ func (c *Client) ListZones(ctx context.Context) ([]Zone, error) {
 	}
 
 	if c.apiVersion == APIVersionV1 {
-		var response ZonesResponseV1
-		if err := json.Unmarshal(respBody, &response); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal zones response: %w", err)
-		}
-		if !response.Success {
-			return nil, fmt.Errorf("API returned error: %s", response.Message)
+		response, err := decodeResponse[ZonesResponseV1](respBody, "zones")
+		if err != nil {
+			return nil, err
 		}
 		return response.Data, nil
 	}
 
 	// V2 API
-	var response ZonesResponseV2
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal zones response: %w", err)
+	response, err := decodeResponse[ZonesResponseV2](respBody, "zones")
+	if err != nil {
+		return nil, err
 	}
-
-	if !response.Success {
-		return nil, fmt.Errorf("API returned error: %s", response.Message)
-	}
-
 	return response.Data.Zones, nil
 }
 
@@ -301,23 +313,17 @@ func (c *Client) ListRecords(ctx context.Context, zoneID int) ([]Record, error) 
 	}
 
 	if c.apiVersion == APIVersionV1 {
-		var response RecordsResponseV1
-		if err := json.Unmarshal(respBody, &response); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal records response: %w", err)
-		}
-		if !response.Success {
-			return nil, fmt.Errorf("API returned error: %s", response.Message)
+		response, err := decodeResponse[RecordsResponseV1](respBody, "records")
+		if err != nil {
+			return nil, err
 		}
 		return response.Data, nil
 	}
 
 	// V2 API
-	var response RecordsResponseV2Records
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal records response: %w", err)
-	}
-	if !response.Success {
-		return nil, fmt.Errorf("API returned error: %s", response.Message)
+	response, err := decodeResponse[RecordsResponseV2Records](respBody, "records")
+	if err != nil {
+		return nil, err
 	}
 	return response.Data.Records, nil
 }
@@ -331,12 +337,9 @@ func (c *Client) CreateRecord(ctx context.Context, zoneID int, record CreateReco
 	}
 
 	if c.apiVersion == APIVersionV1 {
-		var response RecordResponseV1
-		if err := json.Unmarshal(respBody, &response); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal create record response: %w", err)
-		}
-		if !response.Success {
-			return nil, fmt.Errorf("API returned error: %s", response.Message)
+		response, err := decodeResponse[RecordResponseV1](respBody, "create record")
+		if err != nil {
+			return nil, err
 		}
 		// Convert V1 response to Record
 		return &Record{
@@ -352,15 +355,10 @@ func (c *Client) CreateRecord(ctx context.Context, zoneID int, record CreateReco
 	}
 
 	// V2 API
-	var response RecordResponseV2
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal create record response: %w", err)
+	response, err := decodeResponse[RecordResponseV2](respBody, "create record")
+	if err != nil {
+		return nil, err
 	}
-
-	if !response.Success {
-		return nil, fmt.Errorf("API returned error: %s", response.Message)
-	}
-
 	return &response.Data.Record, nil
 }
 
@@ -374,12 +372,8 @@ func (c *Client) UpdateRecord(ctx context.Context, zoneID, recordID int, record 
 
 	if c.apiVersion == APIVersionV1 {
 		// V1 API returns null data on update success
-		var response APIResponse
-		if err := json.Unmarshal(respBody, &response); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal update record response: %w", err)
-		}
-		if !response.Success {
-			return nil, fmt.Errorf("API returned error: %s", response.Message)
+		if _, err := decodeResponse[APIResponse](respBody, "update record"); err != nil {
+			return nil, err
 		}
 		// V1 doesn't return the updated record, construct from request
 		return &Record{
@@ -395,15 +389,10 @@ func (c *Client) UpdateRecord(ctx context.Context, zoneID, recordID int, record 
 	}
 
 	// V2 API
-	var response RecordResponseV2
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal update record response: %w", err)
+	response, err := decodeResponse[RecordResponseV2](respBody, "update record")
+	if err != nil {
+		return nil, err
 	}
-
-	if !response.Success {
-		return nil, fmt.Errorf("API returned error: %s", response.Message)
-	}
-
 	return &response.Data.Record, nil
 }
 

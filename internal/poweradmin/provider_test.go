@@ -52,7 +52,7 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, _ *http.Request) {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
-		resp := ZonesResponseV2{Success: true}
+		resp := ZonesResponseV2{ResponseStatus: ResponseStatus{Success: true}}
 		resp.Data.Zones = ms.zones
 		_ = json.NewEncoder(w).Encode(resp)
 	})
@@ -87,11 +87,11 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 				return
 			}
 			if recs, ok := ms.records[zoneID]; ok {
-				resp := RecordsResponseV2Records{Success: true}
+				resp := RecordsResponseV2Records{ResponseStatus: ResponseStatus{Success: true}}
 				resp.Data.Records = recs
 				_ = json.NewEncoder(w).Encode(resp)
 			} else {
-				resp := RecordsResponseV2Records{Success: true}
+				resp := RecordsResponseV2Records{ResponseStatus: ResponseStatus{Success: true}}
 				resp.Data.Records = []Record{}
 				_ = json.NewEncoder(w).Encode(resp)
 			}
@@ -110,7 +110,7 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 				Content: req.Content,
 				TTL:     req.TTL,
 			}
-			resp := RecordResponseV2{Success: true}
+			resp := RecordResponseV2{ResponseStatus: ResponseStatus{Success: true}}
 			resp.Data.Record = newRecord
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(resp)
@@ -124,7 +124,7 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 					recordID: recordID,
 					request:  req,
 				})
-				resp := RecordResponseV2{Success: true}
+				resp := RecordResponseV2{ResponseStatus: ResponseStatus{Success: true}}
 				_ = json.NewEncoder(w).Encode(resp)
 			}
 
@@ -1477,7 +1477,7 @@ func newMockServerV1(zones []Zone, records map[int][]Record) *mockServer {
 
 	// List zones - V1 returns array directly in data
 	mux.HandleFunc("/api/v1/zones", func(w http.ResponseWriter, _ *http.Request) {
-		resp := ZonesResponseV1{Success: true, Data: ms.zones}
+		resp := ZonesResponseV1{ResponseStatus: ResponseStatus{Success: true}, Data: ms.zones}
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
@@ -1546,7 +1546,7 @@ func newMockServerV1(zones []Zone, records map[int][]Record) *mockServer {
 
 			newID := len(ms.records[zoneID]) + 100
 			// V1 returns flat structure with record_id
-			resp := RecordResponseV1{Success: true}
+			resp := RecordResponseV1{ResponseStatus: ResponseStatus{Success: true}}
 			resp.Data.RecordID = newID
 			resp.Data.Name = req.Name
 			resp.Data.Type = req.Type
@@ -1566,7 +1566,7 @@ func newMockServerV1(zones []Zone, records map[int][]Record) *mockServer {
 					request:  req,
 				})
 				// V1 returns null data on update
-				resp := APIResponse{Success: true, Message: "Record updated successfully"}
+				resp := APIResponse{ResponseStatus: ResponseStatus{Success: true, Message: "Record updated successfully"}}
 				_ = json.NewEncoder(w).Encode(resp)
 			}
 
@@ -2069,7 +2069,7 @@ func TestV2API_ListRecords_DisabledAsInt(t *testing.T) {
 	// Create a mock server that returns disabled as int for V2
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v2/zones", func(w http.ResponseWriter, _ *http.Request) {
-		resp := ZonesResponseV2{Success: true}
+		resp := ZonesResponseV2{ResponseStatus: ResponseStatus{Success: true}}
 		resp.Data.Zones = zones
 		_ = json.NewEncoder(w).Encode(resp)
 	})
