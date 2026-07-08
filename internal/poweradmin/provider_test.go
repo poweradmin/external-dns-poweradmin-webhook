@@ -1924,14 +1924,18 @@ func TestV1API_ListRecords_DisabledAsInt(t *testing.T) {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
 
-	// The V1 mock returns disabled as int (0/1). This should parse without error.
+	// The V1 mock returns disabled as int (0/1). This should parse without
+	// error, and the disabled record must be filtered out.
 	endpoints, err := provider.Records(context.Background())
 	if err != nil {
 		t.Fatalf("Records failed (disabled as int should be handled): %v", err)
 	}
 
-	if len(endpoints) != 2 {
-		t.Errorf("Expected 2 endpoints, got %d", len(endpoints))
+	if len(endpoints) != 1 {
+		t.Errorf("Expected 1 endpoint (disabled record filtered), got %d", len(endpoints))
+	}
+	if len(endpoints) > 0 && endpoints[0].DNSName != "www.example.com" {
+		t.Errorf("Expected the enabled record, got %s", endpoints[0].DNSName)
 	}
 }
 
@@ -2128,7 +2132,145 @@ func TestV2API_ListRecords_DisabledAsInt(t *testing.T) {
 		t.Fatalf("V2 Records failed with int disabled field: %v", err)
 	}
 
-	if len(endpoints) != 2 {
-		t.Errorf("Expected 2 endpoints, got %d", len(endpoints))
+	if len(endpoints) != 1 {
+		t.Errorf("Expected 1 endpoint (disabled record filtered), got %d", len(endpoints))
+	}
+	if len(endpoints) > 0 && endpoints[0].DNSName != "www.example.com" {
+		t.Errorf("Expected the enabled record, got %s", endpoints[0].DNSName)
+	}
+}
+
+// TestApplyChanges_ReEnablesDisabledRecord verifies that creating an endpoint
+// whose target already exists as a disabled record re-enables that record
+// instead of stacking an enabled duplicate next to it.
+func TestApplyChanges_ReEnablesDisabledRecord(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(true)},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	changes := &plan.Changes{
+		Create: []*endpoint.Endpoint{
+			{DNSName: "www.example.com", RecordType: "A", Targets: endpoint.Targets{"1.1.1.1"}, RecordTTL: 300},
+		},
+	}
+	if err := provider.ApplyChanges(context.Background(), changes); err != nil {
+		t.Fatalf("ApplyChanges failed: %v", err)
+	}
+
+	if len(ms.createCalls) != 0 {
+		t.Errorf("Expected no create calls (disabled record should be re-enabled), got %d", len(ms.createCalls))
+	}
+	if len(ms.updateCalls) != 1 {
+		t.Fatalf("Expected 1 update call (re-enable), got %d", len(ms.updateCalls))
+	}
+	if ms.updateCalls[0].recordID != 101 {
+		t.Errorf("Expected update of record 101, got %d", ms.updateCalls[0].recordID)
+	}
+	if ms.updateCalls[0].request.Disabled {
+		t.Error("Expected the record to be re-enabled (disabled=false)")
+	}
+}
+
+// TestUpdateRecord_ReEnablesDisabledRecordForNewTarget verifies that a target
+// added by an update re-enables a matching disabled record instead of
+// creating a duplicate.
+func TestUpdateRecord_ReEnablesDisabledRecordForNewTarget(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300, Disabled: FlexBool(true)},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache = zones[:1]
+
+	oldEp := &endpoint.Endpoint{
+		DNSName:    "www.example.com",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+		RecordTTL:  300,
+	}
+	newEp := &endpoint.Endpoint{
+		DNSName:    "www.example.com",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1", "2.2.2.2"},
+		RecordTTL:  300,
+	}
+
+	if err := provider.updateRecord(context.Background(), oldEp, newEp); err != nil {
+		t.Fatalf("updateRecord failed: %v", err)
+	}
+
+	if len(ms.createCalls) != 0 {
+		t.Errorf("Expected no create calls, got %d", len(ms.createCalls))
+	}
+	if len(ms.updateCalls) != 1 {
+		t.Fatalf("Expected 1 update call (re-enable of record 102), got %d", len(ms.updateCalls))
+	}
+	if ms.updateCalls[0].recordID != 102 {
+		t.Errorf("Expected update of record 102, got %d", ms.updateCalls[0].recordID)
+	}
+	if ms.updateCalls[0].request.Disabled {
+		t.Error("Expected the record to be re-enabled (disabled=false)")
+	}
+}
+
+// TestDeleteRecord_SkipsDisabledDuplicate verifies that deletes only claim
+// enabled records: a disabled record with the same content is invisible to
+// external-dns and must not be consumed by the target multiset.
+func TestDeleteRecord_SkipsDisabledDuplicate(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(true)},
+			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache = zones[:1]
+
+	ep := &endpoint.Endpoint{
+		DNSName:    "www.example.com",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+	}
+	if err := provider.deleteRecord(context.Background(), ep); err != nil {
+		t.Fatalf("deleteRecord failed: %v", err)
+	}
+
+	if len(ms.deleteCalls) != 1 {
+		t.Fatalf("Expected 1 delete call, got %d", len(ms.deleteCalls))
+	}
+	if ms.deleteCalls[0].recordID != 102 {
+		t.Errorf("Expected deletion of enabled record 102, got %d", ms.deleteCalls[0].recordID)
 	}
 }

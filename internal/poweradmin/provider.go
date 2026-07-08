@@ -88,6 +88,13 @@ func (p *Provider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 				continue
 			}
 
+			// Disabled records do not resolve, so external-dns must see them
+			// as absent; the create path re-enables a matching disabled
+			// record instead of stacking an enabled duplicate next to it.
+			if bool(record.Disabled) {
+				continue
+			}
+
 			// Build the full DNS name
 			dnsName := record.Name
 			if !zoneContains(zone.Name, dnsName) {
@@ -218,11 +225,19 @@ func (p *Provider) createRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 		return err
 	}
 
+	// List existing records so a disabled record matching a target can be
+	// re-enabled instead of duplicated.
+	records, err := p.client.ListRecords(ctx, zone.ID)
+	if err != nil {
+		return fmt.Errorf("failed to list records for zone %s: %w", zone.Name, err)
+	}
+	disabled := disabledRecords(records, dnsName, ep.RecordType)
+
 	recordName := extractRecordName(dnsName, zone.Name)
 	ttl := endpointTTL(ep)
 
 	for _, target := range ep.Targets {
-		if err := p.createOne(ctx, zone, recordName, ep.RecordType, target, ttl); err != nil {
+		if err := p.ensureOne(ctx, zone, &disabled, recordName, ep.RecordType, target, ttl); err != nil {
 			return err
 		}
 	}
@@ -248,6 +263,7 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 	}
 
 	existing := claimRecords(records, normalizeDNSName(oldEp.DNSName), oldEp.RecordType, oldEp.Targets)
+	disabled := disabledRecords(records, dnsName, newEp.RecordType)
 	ttl := endpointTTL(newEp)
 	recordName := extractRecordName(dnsName, zone.Name)
 
@@ -279,7 +295,7 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 	// records run out, create the surplus targets.
 	for i, target := range pending {
 		if i >= len(leftover) {
-			if err := p.createOne(ctx, zone, recordName, newEp.RecordType, target, ttl); err != nil {
+			if err := p.ensureOne(ctx, zone, &disabled, recordName, newEp.RecordType, target, ttl); err != nil {
 				return err
 			}
 			continue
@@ -321,6 +337,31 @@ func (p *Provider) deleteRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 	}
 
 	return nil
+}
+
+// ensureOne makes one enabled record exist for a target: a disabled record
+// with matching content is re-enabled in place (and consumed from the
+// candidate list) instead of creating an enabled duplicate next to it.
+func (p *Provider) ensureOne(ctx context.Context, zone *Zone, disabled *[]Record, recordName, recordType, target string, ttl int) error {
+	for i, record := range *disabled {
+		if recordMatchesTarget(record, target) {
+			*disabled = append((*disabled)[:i], (*disabled)[i+1:]...)
+			return p.updateOne(ctx, zone, record, recordName, recordType, target, ttl)
+		}
+	}
+	return p.createOne(ctx, zone, recordName, recordType, target, ttl)
+}
+
+// disabledRecords returns the disabled records at (dnsName, recordType), the
+// candidates ensureOne may re-enable. dnsName must be canonical.
+func disabledRecords(records []Record, dnsName, recordType string) []Record {
+	var out []Record
+	for _, record := range records {
+		if bool(record.Disabled) && record.Name == dnsName && record.Type == recordType {
+			out = append(out, record)
+		}
+	}
+	return out
 }
 
 // createOne creates a single DNS record for one endpoint target
@@ -393,7 +434,9 @@ func claimRecords(records []Record, dnsName, recordType string, targets endpoint
 
 	var claimed []Record
 	for _, record := range records {
-		if record.Name != dnsName || record.Type != recordType {
+		// Disabled records are invisible to external-dns (Records skips
+		// them), so its targets can only refer to enabled records.
+		if bool(record.Disabled) || record.Name != dnsName || record.Type != recordType {
 			continue
 		}
 		for i, target := range remaining {
