@@ -12,15 +12,16 @@ import (
 	"time"
 )
 
-// FlexBool is a bool type that can unmarshal from both JSON booleans and integers (0/1).
-// PowerAdmin API v1 and v2 return the disabled field as an integer.
+// FlexBool is a bool type that can unmarshal from JSON booleans, integers
+// (0/1), their string forms, and null. The PowerAdmin API is PHP-backed and
+// does not return the disabled field in a consistent type.
 type FlexBool bool
 
 func (b *FlexBool) UnmarshalJSON(data []byte) error {
 	switch string(data) {
-	case "true", "1":
+	case "true", "1", `"true"`, `"1"`:
 		*b = true
-	case "false", "0":
+	case "false", "0", `"false"`, `"0"`, "null":
 		*b = false
 	default:
 		return fmt.Errorf("FlexBool: cannot unmarshal %s", string(data))
@@ -59,7 +60,7 @@ func NewClient(baseURL, apiKey string, apiVersion APIVersion) *Client {
 		apiVersion = APIVersionV2
 	}
 	return &Client{
-		baseURL:    baseURL,
+		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		apiVersion: apiVersion,
 		httpClient: &http.Client{
@@ -409,12 +410,25 @@ func (c *Client) UpdateRecord(ctx context.Context, zoneID, recordID int, record 
 // DeleteRecord deletes a DNS record
 func (c *Client) DeleteRecord(ctx context.Context, zoneID, recordID int) error {
 	path := fmt.Sprintf("/zones/%d/records/%d", zoneID, recordID)
-	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
+	respBody, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	// A missing record is already gone; treat as success so re-applying the
 	// desired state stays idempotent across external-dns reconcile loops.
 	var apiErr *APIError
 	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Some failures come back as 2xx with success=false in the body. The
+	// field is a pointer so a 204 or a body without "success" stays a success.
+	var response struct {
+		Success *bool  `json:"success"`
+		Message string `json:"message"`
+	}
+	if len(respBody) > 0 && json.Unmarshal(respBody, &response) == nil && response.Success != nil && !*response.Success {
+		return fmt.Errorf("API returned error: %s", response.Message)
+	}
+	return nil
 }

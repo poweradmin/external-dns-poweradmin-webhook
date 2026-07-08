@@ -1685,6 +1685,11 @@ func TestFlexBool_UnmarshalJSON(t *testing.T) {
 		{"bool false", "false", FlexBool(false), false},
 		{"int 1", "1", FlexBool(true), false},
 		{"int 0", "0", FlexBool(false), false},
+		{"string 1", "\"1\"", FlexBool(true), false},
+		{"string 0", "\"0\"", FlexBool(false), false},
+		{"string true", "\"true\"", FlexBool(true), false},
+		{"string false", "\"false\"", FlexBool(false), false},
+		{"null", "null", FlexBool(false), false},
 		{"invalid", "\"yes\"", FlexBool(false), true},
 	}
 
