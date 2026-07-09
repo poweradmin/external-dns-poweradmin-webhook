@@ -1,6 +1,6 @@
 module github.com/poweradmin/external-dns-poweradmin-webhook
 
-go 1.26.3
+go 1.26.5
 
 require (
 	github.com/caarlos0/env/v11 v11.4.1
