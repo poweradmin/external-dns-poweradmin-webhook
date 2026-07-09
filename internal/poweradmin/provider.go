@@ -287,7 +287,7 @@ func (p *Provider) createRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 	ttl := endpointTTL(ep)
 
 	for _, target := range ep.Targets {
-		if err := p.ensureOne(ctx, zone, &disabled, recordName, ep.RecordType, target, ttl); err != nil {
+		if err := p.ensureOne(ctx, zone, &disabled, dnsName, recordName, ep.RecordType, target, ttl); err != nil {
 			return err
 		}
 	}
@@ -345,13 +345,13 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 	// records run out, create the surplus targets.
 	for i, target := range pending {
 		if i >= len(leftover) {
-			if err := p.ensureOne(ctx, zone, &disabled, recordName, newEp.RecordType, target, ttl); err != nil {
+			if err := p.ensureOne(ctx, zone, &disabled, dnsName, recordName, newEp.RecordType, target, ttl); err != nil {
 				return err
 			}
 			continue
 		}
 
-		if err := p.updateOne(ctx, zone, leftover[i], recordName, newEp.RecordType, target, ttl); err != nil {
+		if err := p.updateOne(ctx, zone, leftover[i], dnsName, newEp.RecordType, target, ttl); err != nil {
 			return err
 		}
 	}
@@ -392,11 +392,11 @@ func (p *Provider) deleteRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 // ensureOne makes one enabled record exist for a target: a disabled record
 // with matching content is re-enabled in place (and consumed from the
 // candidate list) instead of creating an enabled duplicate next to it.
-func (p *Provider) ensureOne(ctx context.Context, zone *Zone, disabled *[]Record, recordName, recordType, target string, ttl int) error {
+func (p *Provider) ensureOne(ctx context.Context, zone *Zone, disabled *[]Record, dnsName, recordName, recordType, target string, ttl int) error {
 	for i, record := range *disabled {
 		if recordMatchesTarget(record, target) {
 			*disabled = append((*disabled)[:i], (*disabled)[i+1:]...)
-			return p.updateOne(ctx, zone, record, recordName, recordType, target, ttl)
+			return p.updateOne(ctx, zone, record, dnsName, recordType, target, ttl)
 		}
 	}
 	return p.createOne(ctx, zone, recordName, recordType, target, ttl)
@@ -439,14 +439,16 @@ func (p *Provider) createOne(ctx context.Context, zone *Zone, recordName, record
 	return err
 }
 
-// updateOne rewrites a single DNS record to a new endpoint target
-func (p *Provider) updateOne(ctx context.Context, zone *Zone, record Record, recordName, recordType, target string, ttl int) error {
+// updateOne rewrites a single DNS record to a new endpoint target. The request
+// must carry the full DNS name: PowerAdmin's update endpoints, unlike create,
+// do not expand "@" and would rename the record to a literal "@.<zone>".
+func (p *Provider) updateOne(ctx context.Context, zone *Zone, record Record, dnsName, recordType, target string, ttl int) error {
 	content, priority, err := parseTarget(recordType, target)
 	if err != nil {
 		return err
 	}
 	req := UpdateRecordRequest{
-		Name:     recordName,
+		Name:     dnsName,
 		Type:     recordType,
 		Content:  content,
 		TTL:      ttl,

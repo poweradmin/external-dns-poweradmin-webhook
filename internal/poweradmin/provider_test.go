@@ -2450,3 +2450,74 @@ func TestRecords_SkipsShadowedRecords(t *testing.T) {
 		t.Errorf("Expected app.example.com to come from the owning zone (2.2.2.2), got %v", app.Targets)
 	}
 }
+
+// TestUpdateRecord_ApexSendsFullName verifies apex updates carry the full zone
+// name. PowerAdmin's update endpoints, unlike create, do not expand "@" and
+// would rename the live record to a literal "@.<zone>".
+func TestUpdateRecord_ApexSendsFullName(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache = zones[:1]
+
+	oldEp := endpoint.NewEndpointWithTTL("example.com", "A", 300, "1.1.1.1")
+	newEp := endpoint.NewEndpointWithTTL("example.com", "A", 300, "5.6.7.8")
+
+	if err := provider.updateRecord(context.Background(), oldEp, newEp); err != nil {
+		t.Fatalf("updateRecord failed: %v", err)
+	}
+
+	if len(ms.updateCalls) != 1 {
+		t.Fatalf("Expected 1 update call, got %d", len(ms.updateCalls))
+	}
+	if got := ms.updateCalls[0].request.Name; got != "example.com" {
+		t.Errorf("Expected apex update to send full name example.com, got %q", got)
+	}
+}
+
+// TestUpdateRecord_SubdomainSendsFullName verifies non-apex updates also carry
+// the full DNS name, which PowerAdmin's update normalization accepts unchanged.
+func TestUpdateRecord_SubdomainSendsFullName(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+		},
+	}
+
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache = zones[:1]
+
+	oldEp := endpoint.NewEndpointWithTTL("www.example.com", "A", 300, "1.1.1.1")
+	newEp := endpoint.NewEndpointWithTTL("www.example.com", "A", 300, "5.6.7.8")
+
+	if err := provider.updateRecord(context.Background(), oldEp, newEp); err != nil {
+		t.Fatalf("updateRecord failed: %v", err)
+	}
+
+	if len(ms.updateCalls) != 1 {
+		t.Fatalf("Expected 1 update call, got %d", len(ms.updateCalls))
+	}
+	if got := ms.updateCalls[0].request.Name; got != "www.example.com" {
+		t.Errorf("Expected update to send full name www.example.com, got %q", got)
+	}
+}
