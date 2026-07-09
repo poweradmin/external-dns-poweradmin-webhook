@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.4.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.3.0...v1.4.0) (2026-07-09)
+
+
+### Bug Fixes
+
+* accept string and null disabled values, verify delete responses, trim base URL slash ([0dd36d5](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/0dd36d52555f24ff772b9e2efedcb9cc94b1caef))
+* aggregate multi-target record sets and reconcile target changes on update ([9a9e162](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/9a9e16205e19937936fb17f8626cacad22e2d69e))
+* decode record IDs as numbers or strings so agent-backend PowerAdmin deployments can sync ([bdd4b08](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/bdd4b08181f3652a484b0676540d5d813ed7e279))
+* decode v1 create response disabled field with FlexBool ([ac516b4](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/ac516b4e8657315f155ea753a54db487f8a1f227))
+* drop unsupported and apex NS endpoints and trim CNAME targets in AdjustEndpoints ([e59c5e6](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/e59c5e67befe168a3fcb4834d0f5c15688d73d1d))
+* expose only filter-matching records when a parent zone is admitted ([25afe03](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/25afe03e61174708ac9b21f157ab292f0af962ca))
+* expose unconfigured TTL when a record set has mixed TTLs so drift is repaired ([250bf78](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/250bf78ef107613adec709635d27fcb6586e1561))
+* fail Records when a zone listing errors instead of returning a partial view ([9cd280f](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/9cd280f872c4f029f61e650fb3df90a45829fddc))
+* guard zone cache with a mutex, evict removed zones, delete before create ([04a041f](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/04a041f829fff6bde441c33886ca57689b5fad3c))
+* hide disabled records from external-dns and re-enable them instead of duplicating ([d906f55](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/d906f55ab850e9cb279969db6490f3132b10c819))
+* raise default write timeout so a slow multi-zone records sweep is not cut off ([9918050](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/99180506816a05f2d575c2d04a2cde16e0fb9239))
+* refuse HTTP redirects so writes are not silently converted to GETs ([65506eb](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/65506ebb132f8c68dc7d11ee5534c3e9be993b8c))
+* require label boundary and canonical names when matching zones ([8892743](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/88927436781ba60ba2ecb4958ad58b7836ad4b89))
+* send the full DNS name in record updates so apex updates are not renamed to @.&lt;zone&gt; ([d08feb0](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/d08feb05c5c69b4d636ed2062df76a6e761594d3))
+* skip records shadowed by a more specific zone in Records ([ae973e6](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/ae973e638210be46120f0899cc2f4c04a3332dca))
+* store SRV priority separately, reject malformed MX/SRV targets, trim only one TXT quote pair ([a7aaf7b](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/a7aaf7b1e8279c51cf29d4690ebf44721d083ef4))
+* validate regex domain filter cleanly and check PowerAdmin reachability in readyz ([f8bccf9](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/f8bccf98ad87537b6b13d41f36fbc199b8d8d32a))
+
+
+### Miscellaneous Chores
+
+* release 1.4.0 ([af800ad](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/af800adfd7e608c386efaeba261014e2c767baa8))
+
 ## [1.3.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.2.8...v1.3.0) (2026-05-30)
 
 
