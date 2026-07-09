@@ -230,6 +230,19 @@ Ensure your PowerAdmin instance has:
    - Update records
    - Delete records
 
+### Behavior notes
+
+- `POWERADMIN_URL` must point directly at the PowerAdmin instance: HTTP redirects are
+  refused rather than followed, since following them would silently convert write
+  requests into GETs. If PowerAdmin redirects (e.g. HTTP→HTTPS or a trailing-slash
+  rewrite), use the final URL.
+- SOA records and NS records at a zone apex are never managed; ExternalDNS endpoints
+  for them are dropped in `AdjustEndpoints` so they are not repeatedly retried.
+- Records disabled in PowerAdmin are hidden from ExternalDNS. If ExternalDNS creates a
+  record that already exists in disabled form, the existing record is re-enabled
+  instead of duplicated.
+- CNAME endpoints are limited to a single target; extra targets are trimmed.
+
 ### LUA records (GSLB)
 
 LUA records (for GSLB use cases such as `pickclosest`, `ifurlup`, `ifportup`) are managed
@@ -256,6 +269,7 @@ byte-identical. To use them:
 ├── internal/
 │   └── poweradmin/
 │       ├── client.go         # PowerAdmin API client
+│       ├── client_test.go    # Client tests
 │       ├── provider.go       # ExternalDNS provider implementation
 │       └── provider_test.go  # Provider tests
 ├── deploy/
