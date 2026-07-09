@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -31,13 +32,13 @@ type mockServer struct {
 
 type updateCall struct {
 	zoneID   int
-	recordID int
+	recordID RecordID
 	request  UpdateRecordRequest
 }
 
 type deleteCall struct {
 	zoneID   int
-	recordID int
+	recordID RecordID
 }
 
 func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
@@ -64,12 +65,15 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 		path := r.URL.Path
 
 		// Parse zone ID and optional record ID
-		var zoneID, recordID int
+		var zoneID int
+		var recordID RecordID
 		hasRecordID := false
 
 		if strings.Contains(path, "/records/") {
 			// /api/v2/zones/{zoneID}/records/{recordID}
-			_, _ = fmt.Sscanf(path, "/api/v2/zones/%d/records/%d", &zoneID, &recordID)
+			var rid string
+			_, _ = fmt.Sscanf(path, "/api/v2/zones/%d/records/%s", &zoneID, &rid)
+			recordID = RecordID(rid)
 			hasRecordID = true
 		} else if strings.HasSuffix(path, "/records") {
 			// /api/v2/zones/{zoneID}/records
@@ -101,7 +105,7 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			ms.createCalls = append(ms.createCalls, req)
 
-			newID := len(ms.records[zoneID]) + 100
+			newID := RecordID(fmt.Sprintf("%d", len(ms.records[zoneID])+100))
 			newRecord := Record{
 				ID:      newID,
 				ZoneID:  zoneID,
@@ -151,8 +155,8 @@ func TestUpdateRecord_MultipleTargets(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 
@@ -205,8 +209,8 @@ func TestUpdateRecord_DuplicateTargets(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 
@@ -243,7 +247,7 @@ func TestUpdateRecord_DuplicateTargets(t *testing.T) {
 	}
 
 	// Verify different record IDs were updated
-	recordIDs := make(map[int]bool)
+	recordIDs := make(map[RecordID]bool)
 	for _, call := range ms.updateCalls {
 		recordIDs[call.recordID] = true
 	}
@@ -274,9 +278,9 @@ func TestRecords_AggregatesMultiTarget(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
-			{ID: 103, ZoneID: 1, Name: "www.example.com", Type: "AAAA", Content: "::1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "103", ZoneID: 1, Name: "www.example.com", Type: "AAAA", Content: "::1", TTL: 300},
 		},
 	}
 
@@ -320,7 +324,7 @@ func TestUpdateRecord_AddTarget(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 
@@ -371,8 +375,8 @@ func TestUpdateRecord_RemoveTarget(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 
@@ -406,8 +410,8 @@ func TestUpdateRecord_RemoveTarget(t *testing.T) {
 	if len(ms.deleteCalls) != 1 {
 		t.Fatalf("Expected 1 delete call for the removed target, got %d", len(ms.deleteCalls))
 	}
-	if ms.deleteCalls[0].recordID != 102 {
-		t.Errorf("Expected record 102 (2.2.2.2) to be deleted, got %d", ms.deleteCalls[0].recordID)
+	if ms.deleteCalls[0].recordID != "102" {
+		t.Errorf("Expected record 102 (2.2.2.2) to be deleted, got %s", ms.deleteCalls[0].recordID)
 	}
 	if len(ms.updateCalls) != 0 {
 		t.Errorf("Expected 0 update calls, got %d", len(ms.updateCalls))
@@ -638,7 +642,7 @@ func TestRecords_SRVWithPriority(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "_sip._tcp.example.com", Type: "SRV", Content: "5 5060 sip.example.com", TTL: 300, Priority: &priority},
+			{ID: "101", ZoneID: 1, Name: "_sip._tcp.example.com", Type: "SRV", Content: "5 5060 sip.example.com", TTL: 300, Priority: &priority},
 		},
 	}
 
@@ -830,9 +834,9 @@ func TestApplyChanges_Delete(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "api.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
-			{ID: 103, ZoneID: 1, Name: "example.com", Type: "CNAME", Content: "www.example.com", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "api.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "103", ZoneID: 1, Name: "example.com", Type: "CNAME", Content: "www.example.com", TTL: 300},
 		},
 	}
 
@@ -871,18 +875,18 @@ func TestApplyChanges_Delete(t *testing.T) {
 	}
 
 	// Verify correct record IDs were deleted
-	deletedIDs := make(map[int]bool)
+	deletedIDs := make(map[RecordID]bool)
 	for _, call := range ms.deleteCalls {
 		deletedIDs[call.recordID] = true
 	}
 
-	if !deletedIDs[101] {
+	if !deletedIDs["101"] {
 		t.Error("Expected record 101 (www A) to be deleted")
 	}
-	if !deletedIDs[103] {
+	if !deletedIDs["103"] {
 		t.Error("Expected record 103 (@ CNAME) to be deleted")
 	}
-	if deletedIDs[102] {
+	if deletedIDs["102"] {
 		t.Error("Record 102 (api A) should NOT be deleted")
 	}
 }
@@ -892,7 +896,7 @@ func TestApplyChanges_DryRun(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 
@@ -949,10 +953,10 @@ func TestRecords_FiltersByDomain(t *testing.T) {
 	}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 		2: {
-			{ID: 201, ZoneID: 2, Name: "www.other.org", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "201", ZoneID: 2, Name: "www.other.org", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 
@@ -1043,8 +1047,8 @@ func TestRecords_NarrowerFilterThanZone(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www.app.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "www.app.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 	ms := newMockServer(zones, records)
@@ -1187,10 +1191,10 @@ func TestRecords_SkipsSOAandNS(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "example.com", Type: "SOA", Content: "ns1.example.com hostmaster.example.com 2021010101 3600 600 604800 86400", TTL: 3600},
-			{ID: 102, ZoneID: 1, Name: "example.com", Type: "NS", Content: "ns1.example.com", TTL: 3600},
-			{ID: 103, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 104, ZoneID: 1, Name: "sub.example.com", Type: "NS", Content: "ns1.sub.example.com", TTL: 3600}, // delegated NS, should be included
+			{ID: "101", ZoneID: 1, Name: "example.com", Type: "SOA", Content: "ns1.example.com hostmaster.example.com 2021010101 3600 600 604800 86400", TTL: 3600},
+			{ID: "102", ZoneID: 1, Name: "example.com", Type: "NS", Content: "ns1.example.com", TTL: 3600},
+			{ID: "103", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "104", ZoneID: 1, Name: "sub.example.com", Type: "NS", Content: "ns1.sub.example.com", TTL: 3600}, // delegated NS, should be included
 		},
 	}
 
@@ -1348,8 +1352,8 @@ func TestRecords_NormalizesMixedCaseNames(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "Example.COM"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "WWW.Example.COM", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www.example.com.", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "WWW.Example.COM", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "www.example.com.", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 
@@ -1385,7 +1389,7 @@ func TestRecords_MXWithPriority(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "example.com", Type: "MX", Content: "mail.example.com", TTL: 300, Priority: &priority},
+			{ID: "101", ZoneID: 1, Name: "example.com", Type: "MX", Content: "mail.example.com", TTL: 300, Priority: &priority},
 		},
 	}
 
@@ -1420,7 +1424,7 @@ func TestRecords_LUA(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "gslb.example.com", Type: "LUA", Content: luaContent, TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "gslb.example.com", Type: "LUA", Content: luaContent, TTL: 300},
 		},
 	}
 
@@ -1454,8 +1458,8 @@ func TestApplyChanges_MixedOperations(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "old.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "update.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "old.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "update.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 
@@ -1519,12 +1523,15 @@ func newMockServerV1(zones []Zone, records map[int][]Record) *mockServer {
 		path := r.URL.Path
 
 		// Parse zone ID and optional record ID
-		var zoneID, recordID int
+		var zoneID int
+		var recordID RecordID
 		hasRecordID := false
 
 		if strings.Contains(path, "/records/") {
 			// /api/v1/zones/{zoneID}/records/{recordID}
-			_, _ = fmt.Sscanf(path, "/api/v1/zones/%d/records/%d", &zoneID, &recordID)
+			var rid string
+			_, _ = fmt.Sscanf(path, "/api/v1/zones/%d/records/%s", &zoneID, &rid)
+			recordID = RecordID(rid)
 			hasRecordID = true
 		} else if strings.HasSuffix(path, "/records") {
 			// /api/v1/zones/{zoneID}/records
@@ -1556,8 +1563,9 @@ func newMockServerV1(zones []Zone, records map[int][]Record) *mockServer {
 					if r.Disabled {
 						d = 1
 					}
+					id, _ := strconv.Atoi(string(r.ID))
 					v1Recs = append(v1Recs, v1Record{
-						ID: r.ID, ZoneID: r.ZoneID, Name: r.Name,
+						ID: id, ZoneID: r.ZoneID, Name: r.Name,
 						Type: r.Type, Content: r.Content, TTL: r.TTL,
 						Priority: r.Priority, Disabled: d,
 					})
@@ -1577,7 +1585,7 @@ func newMockServerV1(zones []Zone, records map[int][]Record) *mockServer {
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			ms.createCalls = append(ms.createCalls, req)
 
-			newID := len(ms.records[zoneID]) + 100
+			newID := RecordID(fmt.Sprintf("%d", len(ms.records[zoneID])+100))
 			// V1 returns flat structure with record_id
 			resp := RecordResponseV1{ResponseStatus: ResponseStatus{Success: true}}
 			resp.Data.RecordID = newID
@@ -1740,7 +1748,7 @@ func TestV1API_UpdateRecord(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 
@@ -1785,7 +1793,7 @@ func TestV1API_DeleteRecord(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 
@@ -1817,8 +1825,8 @@ func TestV1API_DeleteRecord(t *testing.T) {
 		t.Errorf("Expected 1 delete call, got %d", len(ms.deleteCalls))
 	}
 
-	if ms.deleteCalls[0].recordID != 101 {
-		t.Errorf("Expected record ID 101, got %d", ms.deleteCalls[0].recordID)
+	if ms.deleteCalls[0].recordID != "101" {
+		t.Errorf("Expected record ID 101, got %s", ms.deleteCalls[0].recordID)
 	}
 }
 
@@ -1870,8 +1878,8 @@ func TestRecords_TXTQuoting(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "example.com", Type: "TXT", Content: "\"v=spf1 include:example.com ~all\"", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "example.com", Type: "TXT", Content: "unquoted-value", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "example.com", Type: "TXT", Content: "\"v=spf1 include:example.com ~all\"", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "example.com", Type: "TXT", Content: "unquoted-value", TTL: 300},
 		},
 	}
 
@@ -1910,8 +1918,8 @@ func TestV1API_ListRecords_DisabledAsInt(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(false)},
-			{ID: 102, ZoneID: 1, Name: "disabled.example.com", Type: "A", Content: "2.2.2.2", TTL: 300, Disabled: FlexBool(true)},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(false)},
+			{ID: "102", ZoneID: 1, Name: "disabled.example.com", Type: "A", Content: "2.2.2.2", TTL: 300, Disabled: FlexBool(true)},
 		},
 	}
 
@@ -1945,7 +1953,7 @@ func TestUpdateRecord_TXTUnquotedContent(t *testing.T) {
 	records := map[int][]Record{
 		1: {
 			// API returns unquoted TXT content
-			{ID: 101, ZoneID: 1, Name: "example.com", Type: "TXT", Content: "v=spf1 include:example.com ~all", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "example.com", Type: "TXT", Content: "v=spf1 include:example.com ~all", TTL: 300},
 		},
 	}
 
@@ -1992,7 +2000,7 @@ func TestDeleteRecord_TXTUnquotedContent(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "example.com", Type: "TXT", Content: "v=spf1 include:example.com ~all", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "example.com", Type: "TXT", Content: "v=spf1 include:example.com ~all", TTL: 300},
 		},
 	}
 
@@ -2147,7 +2155,7 @@ func TestApplyChanges_ReEnablesDisabledRecord(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(true)},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(true)},
 		},
 	}
 
@@ -2175,8 +2183,8 @@ func TestApplyChanges_ReEnablesDisabledRecord(t *testing.T) {
 	if len(ms.updateCalls) != 1 {
 		t.Fatalf("Expected 1 update call (re-enable), got %d", len(ms.updateCalls))
 	}
-	if ms.updateCalls[0].recordID != 101 {
-		t.Errorf("Expected update of record 101, got %d", ms.updateCalls[0].recordID)
+	if ms.updateCalls[0].recordID != "101" {
+		t.Errorf("Expected update of record 101, got %s", ms.updateCalls[0].recordID)
 	}
 	if ms.updateCalls[0].request.Disabled {
 		t.Error("Expected the record to be re-enabled (disabled=false)")
@@ -2190,8 +2198,8 @@ func TestUpdateRecord_ReEnablesDisabledRecordForNewTarget(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300, Disabled: FlexBool(true)},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300, Disabled: FlexBool(true)},
 		},
 	}
 
@@ -2228,8 +2236,8 @@ func TestUpdateRecord_ReEnablesDisabledRecordForNewTarget(t *testing.T) {
 	if len(ms.updateCalls) != 1 {
 		t.Fatalf("Expected 1 update call (re-enable of record 102), got %d", len(ms.updateCalls))
 	}
-	if ms.updateCalls[0].recordID != 102 {
-		t.Errorf("Expected update of record 102, got %d", ms.updateCalls[0].recordID)
+	if ms.updateCalls[0].recordID != "102" {
+		t.Errorf("Expected update of record 102, got %s", ms.updateCalls[0].recordID)
 	}
 	if ms.updateCalls[0].request.Disabled {
 		t.Error("Expected the record to be re-enabled (disabled=false)")
@@ -2243,8 +2251,8 @@ func TestDeleteRecord_SkipsDisabledDuplicate(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(true)},
-			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(true)},
+			{ID: "102", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 
@@ -2270,8 +2278,8 @@ func TestDeleteRecord_SkipsDisabledDuplicate(t *testing.T) {
 	if len(ms.deleteCalls) != 1 {
 		t.Fatalf("Expected 1 delete call, got %d", len(ms.deleteCalls))
 	}
-	if ms.deleteCalls[0].recordID != 102 {
-		t.Errorf("Expected deletion of enabled record 102, got %d", ms.deleteCalls[0].recordID)
+	if ms.deleteCalls[0].recordID != "102" {
+		t.Errorf("Expected deletion of enabled record 102, got %s", ms.deleteCalls[0].recordID)
 	}
 }
 
@@ -2337,8 +2345,8 @@ func TestRecords_MixedTTLsReportUnconfigured(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 600},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 600},
 		},
 	}
 
@@ -2373,8 +2381,8 @@ func TestRecords_UniformTTLsKeepTTL(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-			{ID: 102, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 
@@ -2411,12 +2419,12 @@ func TestRecords_SkipsShadowedRecords(t *testing.T) {
 	}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 			// Shadowed: app.example.com is its own zone.
-			{ID: 102, ZoneID: 1, Name: "app.example.com", Type: "A", Content: "9.9.9.9", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "app.example.com", Type: "A", Content: "9.9.9.9", TTL: 300},
 		},
 		2: {
-			{ID: 201, ZoneID: 2, Name: "app.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+			{ID: "201", ZoneID: 2, Name: "app.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
 		},
 	}
 
@@ -2458,7 +2466,7 @@ func TestUpdateRecord_ApexSendsFullName(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 
@@ -2493,7 +2501,7 @@ func TestUpdateRecord_SubdomainSendsFullName(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
 		1: {
-			{ID: 101, ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
 		},
 	}
 

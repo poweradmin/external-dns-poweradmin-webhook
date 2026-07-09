@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -34,6 +35,25 @@ func (b FlexBool) MarshalJSON() ([]byte, error) {
 		return []byte("true"), nil
 	}
 	return []byte("false"), nil
+}
+
+// RecordID is a PowerAdmin record identifier. SQL-backed deployments return
+// JSON numbers while the API/agent DNS backend (PowerAdmin 4.3.0+) synthesizes
+// opaque strings, so IDs decode from either form and are kept verbatim.
+type RecordID string
+
+func (r *RecordID) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*r = RecordID(s)
+		return nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(data, &n); err != nil {
+		return fmt.Errorf("RecordID: cannot unmarshal %s", string(data))
+	}
+	*r = RecordID(n.String())
+	return nil
 }
 
 // APIVersion represents the PowerAdmin API version
@@ -91,7 +111,7 @@ func (z *Zone) UnmarshalJSON(data []byte) error {
 
 // Record represents a DNS record in PowerAdmin
 type Record struct {
-	ID       int      `json:"id"`
+	ID       RecordID `json:"id"`
 	ZoneID   int      `json:"zone_id"`
 	Name     string   `json:"name"`
 	Type     string   `json:"type"`
@@ -227,7 +247,7 @@ type RecordResponseV2 struct {
 type RecordResponseV1 struct {
 	ResponseStatus
 	Data struct {
-		RecordID int      `json:"record_id"`
+		RecordID RecordID `json:"record_id"`
 		Name     string   `json:"name"`
 		Type     string   `json:"type"`
 		Content  string   `json:"content"`
@@ -248,8 +268,8 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
-	url := fmt.Sprintf("%s/api/%s%s", c.baseURL, c.apiVersion, path)
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	reqURL := fmt.Sprintf("%s/api/%s%s", c.baseURL, c.apiVersion, path)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -363,8 +383,8 @@ func (c *Client) CreateRecord(ctx context.Context, zoneID int, record CreateReco
 }
 
 // UpdateRecord updates an existing DNS record
-func (c *Client) UpdateRecord(ctx context.Context, zoneID, recordID int, record UpdateRecordRequest) (*Record, error) {
-	path := fmt.Sprintf("/zones/%d/records/%d", zoneID, recordID)
+func (c *Client) UpdateRecord(ctx context.Context, zoneID int, recordID RecordID, record UpdateRecordRequest) (*Record, error) {
+	path := fmt.Sprintf("/zones/%d/records/%s", zoneID, url.PathEscape(string(recordID)))
 	respBody, err := c.doRequest(ctx, http.MethodPut, path, record)
 	if err != nil {
 		return nil, err
@@ -397,8 +417,8 @@ func (c *Client) UpdateRecord(ctx context.Context, zoneID, recordID int, record 
 }
 
 // DeleteRecord deletes a DNS record
-func (c *Client) DeleteRecord(ctx context.Context, zoneID, recordID int) error {
-	path := fmt.Sprintf("/zones/%d/records/%d", zoneID, recordID)
+func (c *Client) DeleteRecord(ctx context.Context, zoneID int, recordID RecordID) error {
+	path := fmt.Sprintf("/zones/%d/records/%s", zoneID, url.PathEscape(string(recordID)))
 	respBody, err := c.doRequest(ctx, http.MethodDelete, path, nil)
 	// A missing record is already gone; treat as success so re-applying the
 	// desired state stays idempotent across external-dns reconcile loops.

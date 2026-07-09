@@ -456,7 +456,7 @@ func (p *Provider) updateOne(ctx context.Context, zone *Zone, record Record, dns
 		Disabled: false,
 	}
 
-	log.Infof("Updating record %d: %s -> %s", record.ID, record.Content, content)
+	log.Infof("Updating record %s: %s -> %s", record.ID, record.Content, content)
 	if p.dryRun {
 		log.Info("Dry run: skipping actual update")
 		return nil
@@ -468,7 +468,7 @@ func (p *Provider) updateOne(ctx context.Context, zone *Zone, record Record, dns
 
 // deleteOne deletes a single DNS record
 func (p *Provider) deleteOne(ctx context.Context, zone *Zone, record Record) error {
-	log.Infof("Deleting record %d: %s %s %s", record.ID, record.Name, record.Type, record.Content)
+	log.Infof("Deleting record %s: %s %s %s", record.ID, record.Name, record.Type, record.Content)
 	if p.dryRun {
 		log.Info("Dry run: skipping actual deletion")
 		return nil
