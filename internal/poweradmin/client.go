@@ -85,6 +85,11 @@ func NewClient(baseURL, apiKey string, apiVersion APIVersion) *Client {
 		apiVersion: apiVersion,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
+			// Following a redirect turns POST/PUT/DELETE into a body-less GET
+			// that reads as success, silently dropping every write. Fail loudly.
+			CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+				return fmt.Errorf("refusing to follow redirect to %s: set POWERADMIN_URL to the final PowerAdmin URL", req.URL)
+			},
 		},
 	}
 }

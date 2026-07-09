@@ -189,3 +189,26 @@ func TestRecordID_NumericIDsStillDecode(t *testing.T) {
 		t.Fatalf("expected 1 record with ID \"101\", got %+v", records)
 	}
 }
+
+// A redirecting POWERADMIN_URL (e.g. nginx http-to-https 301) must fail loudly:
+// followed redirects turn writes into body-less GETs that read as success.
+func TestClient_RefusesRedirects(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"data":{"zones":[]}}`))
+	}))
+	defer target.Close()
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/api/v2/zones", http.StatusMovedPermanently)
+	}))
+	defer redirector.Close()
+
+	client := NewClient(redirector.URL, "test-key", APIVersionV2)
+	_, err := client.ListZones(context.Background())
+	if err == nil {
+		t.Fatal("expected error when the API URL redirects")
+	}
+	if !strings.Contains(err.Error(), "redirect") {
+		t.Errorf("expected redirect refusal in error, got: %v", err)
+	}
+}
