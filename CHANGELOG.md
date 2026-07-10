@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.0...v1.4.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* reject record responses without a record object and cap response body reads ([5e5efef](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/5e5efef68d514ca84731e2d3eaf7d17450fc9a89))
+
 ## [1.4.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.3.0...v1.4.0) (2026-07-09)
 
 
