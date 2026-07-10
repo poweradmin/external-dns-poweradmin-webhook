@@ -115,7 +115,7 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 				TTL:     req.TTL,
 			}
 			resp := RecordResponseV2{ResponseStatus: ResponseStatus{Success: true}}
-			resp.Data.Record = newRecord
+			resp.Data.Record = &newRecord
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(resp)
 
@@ -128,7 +128,17 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 					recordID: recordID,
 					request:  req,
 				})
+				// The real v2 API returns the updated record in the response.
+				updated := Record{
+					ID:      recordID,
+					ZoneID:  zoneID,
+					Name:    req.Name,
+					Type:    req.Type,
+					Content: req.Content,
+					TTL:     req.TTL,
+				}
 				resp := RecordResponseV2{ResponseStatus: ResponseStatus{Success: true}}
+				resp.Data.Record = &updated
 				_ = json.NewEncoder(w).Encode(resp)
 			}
 

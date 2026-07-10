@@ -55,6 +55,47 @@ func TestDeleteRecord_NoContentIsSuccess(t *testing.T) {
 	}
 }
 
+// A 2xx success body without a "record" object (e.g. from a misrouted
+// endpoint or lenient proxy) must not be treated as a successful create.
+func TestCreateRecord_MissingRecordObject(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"data":{"records":[]}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", APIVersionV2)
+	_, err := client.CreateRecord(context.Background(), 1, CreateRecordRequest{
+		Name: "test.example.com", Type: "A", Content: "192.0.2.1", TTL: 300,
+	})
+	if err == nil {
+		t.Fatal("expected error for create response without a record object")
+	}
+	if !strings.Contains(err.Error(), "no record object") {
+		t.Errorf("expected 'no record object' error, got: %v", err)
+	}
+}
+
+// Response bodies are read through a size cap so an oversized or endless
+// response cannot buffer unbounded data; past the cap the truncated JSON
+// fails to decode instead of succeeding.
+func TestResponseBodyCapped(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"success":true,"data":{"zones":[`))
+		filler := []byte(`{"id":1,"name":"` + strings.Repeat("a", 1024) + `.example"},`)
+		for i := 0; i < 2*1024; i++ {
+			_, _ = w.Write(filler)
+		}
+		_, _ = w.Write([]byte(`{"id":2,"name":"tail.example"}]}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", APIVersionV2)
+	_, err := client.ListZones(context.Background())
+	if err == nil {
+		t.Fatal("expected error for response body exceeding the read cap")
+	}
+}
+
 // A trailing slash in the configured base URL must not produce double-slash
 // request paths.
 func TestNewClient_TrimsTrailingSlash(t *testing.T) {

@@ -240,11 +240,13 @@ type RecordsResponseV2Records struct {
 	} `json:"data"`
 }
 
-// RecordResponseV2 represents the response from a single record operation (V2 API)
+// RecordResponseV2 represents the response from a single record operation (V2 API).
+// Record is a pointer so a success body without a "record" key (misrouted
+// endpoint, lenient proxy) is detectable instead of decoding into a zero value.
 type RecordResponseV2 struct {
 	ResponseStatus
 	Data struct {
-		Record Record `json:"record"`
+		Record *Record `json:"record"`
 	} `json:"data"`
 }
 
@@ -261,6 +263,9 @@ type RecordResponseV1 struct {
 		Disabled FlexBool `json:"disabled"`
 	} `json:"data"`
 }
+
+// maxResponseBytes caps how much of an API response body is read.
+const maxResponseBytes = 1 << 20
 
 // doRequest performs an HTTP request to the PowerAdmin API
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
@@ -289,7 +294,9 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	// Zone and record responses are small JSON; the cap keeps a misrouted or
+	// hostile endpoint from buffering unbounded data into memory.
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -384,7 +391,10 @@ func (c *Client) CreateRecord(ctx context.Context, zoneID int, record CreateReco
 	if err != nil {
 		return nil, err
 	}
-	return &response.Data.Record, nil
+	if response.Data.Record == nil {
+		return nil, fmt.Errorf("create record: API response contained no record object")
+	}
+	return response.Data.Record, nil
 }
 
 // UpdateRecord updates an existing DNS record
@@ -418,7 +428,10 @@ func (c *Client) UpdateRecord(ctx context.Context, zoneID int, recordID RecordID
 	if err != nil {
 		return nil, err
 	}
-	return &response.Data.Record, nil
+	if response.Data.Record == nil {
+		return nil, fmt.Errorf("update record: API response contained no record object")
+	}
+	return response.Data.Record, nil
 }
 
 // DeleteRecord deletes a DNS record
