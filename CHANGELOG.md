@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.1...v1.4.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* bump golang.org/x/net to 0.56.0 and golang.org/x/text to 0.39.0 for CVE-2026-46600 and CVE-2026-56852 ([#96](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/96)) ([22e1c2b](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/22e1c2b0b32e27ffea7283e80cf7dd1cf1bc9fa8))
+
 ## [1.4.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.0...v1.4.1) (2026-07-10)
 
 
