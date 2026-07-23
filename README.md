@@ -28,7 +28,7 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 
 | Webhook Version | PowerAdmin Version | Go | Notes |
 |---|---|---|---|
-| 1.4.0+ | 4.3.0+ (v2), 4.1.0+ (v1) | >= 1.26.5 | Go bumped for CVE-2026-42505, CVE-2026-39822; HTTP redirects from PowerAdmin are refused |
+| 1.4.0+ | 4.3.0 - 4.4.x (v2), 4.1.0+ (v1) | >= 1.26.5 | Go bumped for CVE-2026-42505, CVE-2026-39822; HTTP redirects from PowerAdmin are refused |
 | 1.2.6 - 1.3.0 | 4.3.0+ (v2), 4.1.0+ (v1) | >= 1.26.3 | Go bumped for GO-2026-4918 |
 | 1.2.0 - 1.2.5 | 4.3.0+ (v2), 4.1.0+ (v1) | >= 1.23 | v2 wrapped API responses |
 | 1.0.0 - 1.1.2 | 4.1.0 - 4.2.x | >= 1.23 | Initial release |
