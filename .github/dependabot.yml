@@ -9,6 +9,10 @@ updates:
       timezone: "Europe/Vilnius"
     cooldown:
       default-days: 7
+    # "deps:" type routes commits into release-please's Dependency Updates
+    # changelog section; actions bumps stay hidden as "ci".
+    commit-message:
+      prefix: "deps"
   - package-ecosystem: "github-actions"
     directory: "/"
     groups:
@@ -22,6 +26,8 @@ updates:
       timezone: "Europe/Vilnius"
     cooldown:
       default-days: 7
+    commit-message:
+      prefix: "ci"
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -31,3 +37,5 @@ updates:
       timezone: "Europe/Vilnius"
     cooldown:
       default-days: 7
+    commit-message:
+      prefix: "deps"

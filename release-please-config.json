@@ -4,7 +4,21 @@
     ".": {
       "release-type": "go",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true
+      "bump-patch-for-minor-pre-major": true,
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug Fixes" },
+        { "type": "perf", "section": "Performance" },
+        { "type": "deps", "section": "Dependency Updates" },
+        { "type": "refactor", "section": "Refactoring" },
+        { "type": "docs", "section": "Documentation" },
+        { "type": "chore", "hidden": true },
+        { "type": "ci", "hidden": true },
+        { "type": "test", "hidden": true },
+        { "type": "style", "hidden": true },
+        { "type": "build", "hidden": true },
+        { "type": "revert", "hidden": true }
+      ]
     }
   }
 }
