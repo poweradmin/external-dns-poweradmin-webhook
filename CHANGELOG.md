@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.2...v1.4.3) (2026-07-26)
+
+
+### Documentation
+
+* extend compatibility table to Poweradmin 4.4.x ([36c9227](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/36c922774e2ec878d78066184ba1db99b9478e12))
+
 ## [1.4.2](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.1...v1.4.2) (2026-07-17)
 
 
