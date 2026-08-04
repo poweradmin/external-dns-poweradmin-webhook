@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.5](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.4...v1.4.5) (2026-08-04)
+
+
+### Dependency Updates
+
+* bump github.com/prometheus/client_golang from 1.24.0 to 1.24.1 ([#109](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/109)) ([d4717c5](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/d4717c50e6262872402921378bc2c1df01778b06))
+
 ## [1.4.4](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.3...v1.4.4) (2026-07-28)
 
 
