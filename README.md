@@ -10,7 +10,7 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 
 ## Features
 
-- Full integration with PowerAdmin API (v1 and v2 supported)
+- Full integration with the Poweradmin API (v2; v1 only against Poweradmin below 4.5.0)
 - Supports A, AAAA, CNAME, TXT, MX, NS, SRV, PTR, CAA, and LUA record types
 - Domain filtering support
 - Dry-run mode for testing
@@ -19,19 +19,24 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 
 ## Requirements
 
-- PowerAdmin with API enabled (v1 or v2)
+- Poweradmin with the API enabled (v2 recommended; v1 only below 4.5.0)
 - API key with appropriate permissions
 - Kubernetes cluster (for deployment)
 - ExternalDNS v0.20.0 or later
 
 ## Compatibility
 
+> [!IMPORTANT]
+> Poweradmin 4.5.0 removes API v1: `/api/v1/*` answers `410 Gone`. Set
+> `POWERADMIN_API_VERSION=v2` before upgrading Poweradmin to 4.5.0 or later. API v1 remains
+> available on Poweradmin 4.1.0 - 4.4.x and on the 3.x and 4.x stable branches.
+
 | Webhook Version | PowerAdmin Version | Go | Notes |
 |---|---|---|---|
-| 1.4.7+ | 4.3.0 - 4.4.x (v2), 4.1.0+ (v1) | >= 1.26.6 | Go bumped for GO-2026-6089, GO-2026-6090, GO-2026-6091, GO-2026-6218, GO-2026-5972 |
-| 1.4.0 - 1.4.6 | 4.3.0 - 4.4.x (v2), 4.1.0+ (v1) | >= 1.26.5 | Go bumped for CVE-2026-42505, CVE-2026-39822; HTTP redirects from PowerAdmin are refused |
-| 1.2.6 - 1.3.0 | 4.3.0+ (v2), 4.1.0+ (v1) | >= 1.26.3 | Go bumped for GO-2026-4918 |
-| 1.2.0 - 1.2.5 | 4.3.0+ (v2), 4.1.0+ (v1) | >= 1.23 | v2 wrapped API responses |
+| 1.4.7+ | 4.3.0 - 4.4.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.6 | Go bumped for GO-2026-6089, GO-2026-6090, GO-2026-6091, GO-2026-6218, GO-2026-5972 |
+| 1.4.0 - 1.4.6 | 4.3.0 - 4.4.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.5 | Go bumped for CVE-2026-42505, CVE-2026-39822; HTTP redirects from PowerAdmin are refused |
+| 1.2.6 - 1.3.0 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.3 | Go bumped for GO-2026-4918 |
+| 1.2.0 - 1.2.5 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.23 | v2 wrapped API responses |
 | 1.0.0 - 1.1.2 | 4.1.0 - 4.2.x | >= 1.23 | Initial release |
 
 ## Configuration
@@ -42,7 +47,7 @@ The webhook is configured via environment variables:
 |----------|----------|---------|-------------|
 | `POWERADMIN_URL` | Yes | - | Base URL of your PowerAdmin instance |
 | `POWERADMIN_API_KEY` | Yes | - | API key for authentication |
-| `POWERADMIN_API_VERSION` | No | `v2` | API version to use (`v1` or `v2`) |
+| `POWERADMIN_API_VERSION` | No | `v2` | API version to use (`v1` or `v2`); v1 requires Poweradmin below 4.5.0 |
 | `DOMAIN_FILTER` | No | - | Comma-separated list of domains to manage |
 | `EXCLUDE_DOMAIN_FILTER` | No | - | Comma-separated list of domains to exclude |
 | `REGEXP_DOMAIN_FILTER` | No | - | Regex pattern for domain filtering |
