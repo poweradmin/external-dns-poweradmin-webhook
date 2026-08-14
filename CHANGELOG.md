@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.6](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.5...v1.4.6) (2026-08-14)
+
+
+### Dependency Updates
+
+* bump distroless/static-debian12 from `f5b485e` to `1b7b9f0` ([#115](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/115)) ([707a50f](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/707a50f070fb1e40024da8c2ae013f769199bef3))
+
 ## [1.4.5](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.4...v1.4.5) (2026-08-04)
 
 
