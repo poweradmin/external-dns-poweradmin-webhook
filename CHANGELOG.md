@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.7](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.6...v1.4.7) (2026-08-14)
+
+
+### Bug Fixes
+
+* update Go to 1.26.6 for six standard library vulnerabilities ([#118](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/118)) ([01414d1](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/01414d187772a021842d0c42b18bbd3fb62b0fce))
+
+
+### Documentation
+
+* correct Go 1.26.6 compatibility row to 1.4.7 ([#120](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/120)) ([dc37611](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/dc376112140a7e063a34319ff3f87c02fa60771c))
+
 ## [1.4.6](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.5...v1.4.6) (2026-08-14)
 
 
