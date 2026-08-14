@@ -30,6 +30,14 @@ updates:
       prefix: "ci"
   - package-ecosystem: "docker"
     directory: "/"
+    # Go ships release candidates as a new minor (1.27rc2 before 1.27.0) and
+    # Dependabot fails to detect those tags as pre-releases, so block minor
+    # bumps for golang and move the builder to a new Go minor by hand.
+    ignore:
+      - dependency-name: "golang"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
     schedule:
       interval: "weekly"
       day: "friday"
