@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.8](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.7...v1.4.8) (2026-08-15)
+
+
+### Dependency Updates
+
+* bump golang.org/x/mod to v0.40.0 ([#122](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/122)) ([13366ee](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/13366ee77dd5457601646fa95d991690bbca7d8d))
+
+
+### Documentation
+
+* note that API v1 is unavailable from Poweradmin 4.5.0 ([a0dfdc6](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/a0dfdc67098316285f164391fd124dd4598304ee))
+
 ## [1.4.7](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.6...v1.4.7) (2026-08-14)
 
 
