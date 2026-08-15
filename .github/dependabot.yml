@@ -9,6 +9,10 @@ updates:
       timezone: "Europe/Vilnius"
     cooldown:
       default-days: 7
+    # Indirect deps land in scanner alerts too, and Dependabot skips them
+    # unless "all" is allowed explicitly.
+    allow:
+      - dependency-type: "all"
     # "deps:" type routes commits into release-please's Dependency Updates
     # changelog section; actions bumps stay hidden as "ci".
     commit-message:
