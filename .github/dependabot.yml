@@ -13,6 +13,15 @@ updates:
     # unless "all" is allowed explicitly.
     allow:
       - dependency-type: "all"
+    # Collapse routine bumps into one weekly PR. Majors and security updates
+    # stay ungrouped so breaking or urgent changes land reviewable on their own.
+    groups:
+      go-modules:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
     # "deps:" type routes commits into release-please's Dependency Updates
     # changelog section; actions bumps stay hidden as "ci".
     commit-message:
