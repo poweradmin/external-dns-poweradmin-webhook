@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.10](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.9...v1.4.10) (2026-08-18)
+
+
+### Dependency Updates
+
+* bump github.com/go-openapi/jsonreference from 0.21.5 to 1.0.0 ([#133](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/133)) ([022206d](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/022206dd433e81c8e3af15b70149c8dfa901703d))
+* bump google.golang.org/protobuf ([#132](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/132)) ([97df741](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/97df741d2b17f3f78088b5e0e3e2f87d1dbc783c))
+* bump the go-modules group with 3 updates ([#131](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/131)) ([25b76ac](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/25b76ac86ca71e0d47fa104c0e21f55df5f080d9))
+
 ## [1.4.9](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.8...v1.4.9) (2026-08-15)
 
 
