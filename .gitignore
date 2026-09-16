@@ -40,6 +40,8 @@ go.work.sum
 # AI assistant instruction files
 AGENTS.md
 CLAUDE.md
+GEMINI.md
+.claude/
 
 # Binary
 /external-dns-poweradmin-webhook
