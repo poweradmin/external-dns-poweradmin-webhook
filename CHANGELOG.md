@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.18](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.17...v1.4.18) (2026-09-29)
+
+
+### Dependency Updates
+
+* bump github.com/aws/smithy-go from 1.28.1 to 1.28.2 ([#168](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/168)) ([6b655d4](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/6b655d4ffd4b71695a87894d254ca35ea32b4dbf))
+* bump golang from `ce864e7` to `8ac98ca` ([#166](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/166)) ([519e5b8](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/519e5b8f9cd9d7ac1ce0becb5430f3d0a3334e40))
+* bump the go-modules group across 1 directory with 8 updates ([#170](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/170)) ([1720a45](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/1720a457a2997379d1d276de084d28a75e663130))
+
 ## [1.4.17](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.16...v1.4.17) (2026-09-16)
 
 
