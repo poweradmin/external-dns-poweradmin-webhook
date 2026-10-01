@@ -78,6 +78,7 @@ jobs:
           format: sarif
           output: trivy-fs.sarif
           severity: CRITICAL,HIGH,MEDIUM
+          limit-severities-for-sarif: true
           ignore-unfixed: true
 
       - name: Upload filesystem scan results
@@ -98,6 +99,7 @@ jobs:
           format: sarif
           output: trivy-image.sarif
           severity: CRITICAL,HIGH,MEDIUM
+          limit-severities-for-sarif: true
           ignore-unfixed: true
 
       - name: Upload image scan results
