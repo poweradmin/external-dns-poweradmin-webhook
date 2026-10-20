@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.19...v1.5.0) (2026-10-20)
+
+
+### Features
+
+* warn when API v1 is configured and explain a 410 from PowerAdmin 4.5.0 ([#184](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/184)) ([baf8548](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/baf8548a63d2c30e9234440c615b7661a97568dd))
+
+
+### Dependency Updates
+
+* bump golang from 1.26.8-alpine to 1.26.9-alpine ([#181](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/181)) ([dfb0670](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/dfb0670ddc75cde4e1c597bfbda9a02632afb52f))
+* bump the go-modules group across 1 directory with 10 updates ([#182](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/182)) ([befdac1](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/befdac16640afbab7b0c997f2b7b30182428b03e))
+
 ## [1.4.19](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.18...v1.4.19) (2026-10-06)
 
 
