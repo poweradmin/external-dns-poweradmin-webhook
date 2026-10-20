@@ -253,3 +253,48 @@ func TestClient_RefusesRedirects(t *testing.T) {
 		t.Errorf("expected redirect refusal in error, got: %v", err)
 	}
 }
+
+// PowerAdmin 4.5.0 answers every /api/v1 call with 410 Gone; the error must
+// tell the user to switch to v2 instead of echoing a generic API failure.
+func TestV1Gone_ErrorPointsToV2(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusGone)
+		_, _ = w.Write([]byte(`{"error":true,"message":"API v1 was removed in Poweradmin 4.5.0. Use /api/v2 instead."}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", APIVersionV1)
+	_, err := client.ListZones(context.Background())
+	if err == nil {
+		t.Fatal("expected error for 410 on v1")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusGone {
+		t.Fatalf("expected *APIError with status 410, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "POWERADMIN_API_VERSION=v2") {
+		t.Errorf("expected advice to switch to v2, got: %v", err)
+	}
+}
+
+// A 410 on v2 is not the v1 removal; keep the server message and do not
+// advise switching versions.
+func TestV2Gone_KeepsServerMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusGone)
+		_, _ = w.Write([]byte(`{"success":false,"message":"Zone is gone"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", APIVersionV2)
+	_, err := client.ListZones(context.Background())
+	if err == nil {
+		t.Fatal("expected error for 410 on v2")
+	}
+	if strings.Contains(err.Error(), "POWERADMIN_API_VERSION") {
+		t.Errorf("v2 error must not advise switching versions, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Zone is gone") {
+		t.Errorf("expected server message in error, got: %v", err)
+	}
+}

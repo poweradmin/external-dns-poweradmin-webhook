@@ -315,6 +315,22 @@ test_cross_verify_poweradmin() {
     echo "$zones_response" | jq -e '.' >/dev/null 2>&1
 }
 
+# PowerAdmin 4.5.0+ answers /api/v1 with 410; a v1 webhook must stay unready
+# and log the advice to switch to v2.
+test_v1_gone_points_to_v2() {
+    local status
+    status=$(curl -s -o /dev/null -w "%{http_code}" "$(metrics_url)/readyz")
+    [ "$status" = "503" ] || return 1
+    grep -q "status 410: API v1 was removed.*POWERADMIN_API_VERSION=v2" "$WEBHOOK_LOG"
+}
+
+v1_removed() {
+    local status
+    status=$(curl -s -o /dev/null -w "%{http_code}" -H "X-API-Key: ${API_KEY}" \
+        "$(poweradmin_url)/api/v1/zones")
+    [ "$status" = "410" ]
+}
+
 # --- Test Runner ---
 
 run_all_tests() {
@@ -346,6 +362,12 @@ main() {
     start_webhook "v2"
     run_all_tests "v2"
     stop_webhook
+
+    if v1_removed; then
+        start_webhook "v1"
+        run_test "v1 on PowerAdmin without v1: points to v2" test_v1_gone_points_to_v2
+        stop_webhook
+    fi
 
     if [ "$SKIP_V1_TESTS" = "true" ]; then
         log_warn "Skipping v1 tests (SKIP_V1_TESTS=true)"
