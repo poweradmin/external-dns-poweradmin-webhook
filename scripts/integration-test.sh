@@ -11,6 +11,10 @@ cd "$PROJECT_ROOT"
 POWERADMIN_PORT="${POWERADMIN_PORT:-9090}"
 WEBHOOK_PORT="${WEBHOOK_PORT:-8888}"
 METRICS_PORT="${METRICS_PORT:-8080}"
+# v2 runs against POWERADMIN_IMAGE (compose default: latest). API v1 was
+# removed in PowerAdmin 4.5.0, so the v1 pass runs against an older image.
+V1_POWERADMIN_IMAGE="${V1_POWERADMIN_IMAGE:-poweradmin/poweradmin:4.4.2}"
+SKIP_V1_TESTS="${SKIP_V1_TESTS:-false}"
 API_KEY="test-api-key-for-integration"
 DOMAIN="integration-test.example.com"
 WEBHOOK_PID=""
@@ -131,7 +135,7 @@ run_test() {
 # --- Setup ---
 
 setup_poweradmin() {
-    log_header "Setup: PowerAdmin"
+    log_header "Setup: PowerAdmin (${POWERADMIN_IMAGE:-compose default image})"
 
     log_info "Starting PowerAdmin container"
     docker compose up -d
@@ -149,25 +153,15 @@ setup_poweradmin() {
         "INSERT OR IGNORE INTO api_keys (name, secret_key, created_by, created_at, disabled) \
          VALUES ('webhook-test', '${API_KEY}', 1, datetime('now'), 0);"
 
-    # Create test zone via API
+    # Create test zone via API (v2 exists on every supported PowerAdmin)
     log_info "Creating test zone: ${DOMAIN}"
-    local zone_response
-    zone_response=$(curl -sf -X POST "$(poweradmin_url)/api/v1/zones" \
+    if ! curl -sf -o /dev/null -X POST "$(poweradmin_url)/api/v2/zones" \
         -H "X-API-Key: ${API_KEY}" \
         -H "Content-Type: application/json" \
-        -d "{\"name\":\"${DOMAIN}\",\"type\":\"NATIVE\"}" 2>&1) || {
-        log_warn "API zone creation failed, trying sqlite3 fallback"
-        docker compose exec -T poweradmin sqlite3 /db/pdns.db \
-            "INSERT INTO domains (name, type) VALUES ('${DOMAIN}', 'NATIVE');"
-        local zone_id
-        zone_id=$(docker compose exec -T poweradmin sqlite3 /db/pdns.db \
-            "SELECT id FROM domains WHERE name='${DOMAIN}';")
-        docker compose exec -T poweradmin sqlite3 /db/pdns.db \
-            "INSERT INTO records (domain_id, name, type, content, ttl) VALUES \
-             (${zone_id}, '${DOMAIN}', 'SOA', 'ns1.${DOMAIN} hostmaster.${DOMAIN} 1 10800 3600 604800 3600', 3600), \
-             (${zone_id}, '${DOMAIN}', 'NS', 'ns1.${DOMAIN}', 3600), \
-             (${zone_id}, '${DOMAIN}', 'NS', 'ns2.${DOMAIN}', 3600);"
-    }
+        -d "{\"name\":\"${DOMAIN}\",\"type\":\"NATIVE\"}"; then
+        log_fail "Creating test zone via /api/v2/zones failed"
+        exit 1
+    fi
     log_info "Test zone created"
 }
 
@@ -206,11 +200,9 @@ stop_webhook() {
     fi
 }
 
-clean_test_records() {
-    log_info "Cleaning test records (keeping SOA/NS)"
-    docker compose exec -T poweradmin sqlite3 /db/pdns.db \
-        "DELETE FROM records WHERE domain_id = (SELECT id FROM domains WHERE name='${DOMAIN}') \
-         AND type NOT IN ('SOA', 'NS');"
+stop_poweradmin() {
+    log_info "Stopping PowerAdmin container"
+    docker compose down -v
 }
 
 # --- Test Scenarios ---
@@ -346,20 +338,25 @@ main() {
     log_header "Integration Tests"
     check_prerequisites
 
-    setup_poweradmin
-
     log_info "Building webhook"
     make build
 
-    # Test V1
-    start_webhook "v1"
-    run_all_tests "v1"
-    stop_webhook
-    clean_test_records
+    setup_poweradmin
 
-    # Test V2
     start_webhook "v2"
     run_all_tests "v2"
+    stop_webhook
+
+    if [ "$SKIP_V1_TESTS" = "true" ]; then
+        log_warn "Skipping v1 tests (SKIP_V1_TESTS=true)"
+        return
+    fi
+
+    stop_poweradmin
+    POWERADMIN_IMAGE="$V1_POWERADMIN_IMAGE" setup_poweradmin
+
+    start_webhook "v1"
+    run_all_tests "v1"
     stop_webhook
 }
 
