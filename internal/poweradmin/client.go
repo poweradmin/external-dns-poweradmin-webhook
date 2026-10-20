@@ -66,6 +66,10 @@ const (
 	APIVersionV2 APIVersion = "v2"
 )
 
+// v1RemovedMessage replaces the server text when PowerAdmin answers 410 Gone
+// to a v1 call, so the log says which setting to change.
+const v1RemovedMessage = "API v1 was removed in PowerAdmin 4.5.0; set POWERADMIN_API_VERSION=v2"
+
 // Client is a PowerAdmin API client
 type Client struct {
 	baseURL    string
@@ -299,6 +303,10 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusGone && c.apiVersion == APIVersionV1 {
+		return nil, &APIError{StatusCode: resp.StatusCode, Message: v1RemovedMessage}
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

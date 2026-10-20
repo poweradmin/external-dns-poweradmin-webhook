@@ -29,11 +29,13 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 > [!IMPORTANT]
 > Poweradmin 4.5.0 removes API v1: `/api/v1/*` answers `410 Gone`. Set
 > `POWERADMIN_API_VERSION=v2` before upgrading Poweradmin to 4.5.0 or later. API v1 remains
-> available on Poweradmin 4.1.0 - 4.4.x and on the 3.x and 4.x stable branches.
+> available on Poweradmin 4.1.0 - 4.4.x and is deprecated in this webhook: it logs a warning
+> at startup and will be removed in the next major release.
 
 | Webhook Version | PowerAdmin Version | Go | Notes |
 |---|---|---|---|
-| 1.4.7+ | 4.3.0 - 4.4.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.6 | Go bumped for GO-2026-6089, GO-2026-6090, GO-2026-6091, GO-2026-6218, GO-2026-5972 |
+| 1.5.0+ | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.26.6 | Poweradmin 4.5.0 removes API v1; v1 is deprecated and a 410 from it says to switch to v2 |
+| 1.4.7 - 1.4.19 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.6 | Go bumped for GO-2026-6089, GO-2026-6090, GO-2026-6091, GO-2026-6218, GO-2026-5972 |
 | 1.4.0 - 1.4.6 | 4.3.0 - 4.4.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.5 | Go bumped for CVE-2026-42505, CVE-2026-39822; HTTP redirects from PowerAdmin are refused |
 | 1.2.6 - 1.3.0 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.3 | Go bumped for GO-2026-4918 |
 | 1.2.0 - 1.2.5 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.23 | v2 wrapped API responses |
@@ -224,11 +226,12 @@ export DOMAIN_FILTER=example.com
 
 ## PowerAdmin API Requirements
 
-The webhook supports both PowerAdmin API v1 and v2. By default, v2 is used. To use v1, set `POWERADMIN_API_VERSION=v1`.
+The webhook uses PowerAdmin API v2 by default. API v1 is deprecated and only works with
+PowerAdmin below 4.5.0 (`POWERADMIN_API_VERSION=v1`); PowerAdmin 4.5.0 removed it.
 
 Ensure your PowerAdmin instance has:
 
-1. API enabled (v1 or v2)
+1. API enabled (v2; v1 only below 4.5.0)
 2. An API key created with permissions to:
    - List zones
    - List records

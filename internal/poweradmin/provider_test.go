@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 )
@@ -2537,5 +2538,34 @@ func TestUpdateRecord_SubdomainSendsFullName(t *testing.T) {
 	}
 	if got := ms.updateCalls[0].request.Name; got != "www.example.com" {
 		t.Errorf("Expected update to send full name www.example.com, got %q", got)
+	}
+}
+
+// v1 only works against PowerAdmin below 4.5.0, so configuring it logs a
+// deprecation warning; the default v2 does not.
+func TestNewProvider_V1LogsDeprecationWarning(t *testing.T) {
+	hook := logtest.NewGlobal()
+	defer hook.Reset()
+
+	if _, err := NewProvider("http://localhost", "key", APIVersionV2, nil, false); err != nil {
+		t.Fatalf("NewProvider v2: %v", err)
+	}
+	for _, entry := range hook.AllEntries() {
+		if entry.Message == v1DeprecationWarning {
+			t.Fatal("v2 provider must not log the v1 deprecation warning")
+		}
+	}
+
+	if _, err := NewProvider("http://localhost", "key", APIVersionV1, nil, false); err != nil {
+		t.Fatalf("NewProvider v1: %v", err)
+	}
+	found := false
+	for _, entry := range hook.AllEntries() {
+		if entry.Message == v1DeprecationWarning {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected the v1 deprecation warning to be logged")
 	}
 }

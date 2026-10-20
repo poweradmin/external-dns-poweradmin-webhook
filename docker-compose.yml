@@ -13,14 +13,16 @@
 #      VALUES ('webhook-test', 'test-api-key-for-integration', 1, datetime('now'), 0);"
 #
 #   # Create a test zone via PowerAdmin UI at http://localhost:9090
-#   # or directly in the database:
-#   docker compose exec poweradmin sqlite3 /db/pdns.db \
-#     "INSERT INTO domains (name, type) VALUES ('example.com', 'NATIVE');"
+#   # or through the API:
+#   curl -X POST -H "X-API-Key: test-api-key-for-integration" \
+#     -H "Content-Type: application/json" \
+#     -d '{"name":"example.com","type":"NATIVE"}' \
+#     http://localhost:9090/api/v2/zones
 #
 #   # Run the webhook against PowerAdmin:
 #   POWERADMIN_URL=http://localhost:9090 \
 #   POWERADMIN_API_KEY=test-api-key-for-integration \
-#   POWERADMIN_API_VERSION=v1 \
+#   POWERADMIN_API_VERSION=v2 \
 #   DOMAIN_FILTER=example.com \
 #   LOG_LEVEL=debug \
 #   make run
@@ -32,13 +34,16 @@
 #
 #   # Verify PowerAdmin API directly:
 #   curl -H "X-API-Key: test-api-key-for-integration" \
-#     http://localhost:9090/api/v1/zones
+#     http://localhost:9090/api/v2/zones
+#
+#   # API v1 was removed in PowerAdmin 4.5.0. To test v1, run an older image:
+#   POWERADMIN_IMAGE=poweradmin/poweradmin:4.4.2 docker compose up -d
 #
 #   docker compose down -v
 
 services:
   poweradmin:
-    image: poweradmin/poweradmin:latest
+    image: ${POWERADMIN_IMAGE:-poweradmin/poweradmin:latest}
     container_name: poweradmin-integration
     ports:
       - "9090:80"
