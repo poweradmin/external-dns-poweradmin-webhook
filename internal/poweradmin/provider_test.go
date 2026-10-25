@@ -26,6 +26,7 @@ type mockServer struct {
 	zones           []Zone
 	records         map[int][]Record // zoneID -> records
 	failRecordsList map[int]bool     // zoneID -> respond 500 to record listing
+	createStatus    int              // non-zero: answer record creation with this status
 	createCalls     []CreateRecordRequest
 	updateCalls     []updateCall
 	deleteCalls     []deleteCall
@@ -105,6 +106,11 @@ func newMockServer(zones []Zone, records map[int][]Record) *mockServer {
 			var req CreateRecordRequest
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			ms.createCalls = append(ms.createCalls, req)
+			if ms.createStatus != 0 {
+				w.WriteHeader(ms.createStatus)
+				_, _ = w.Write([]byte(`{"success":false,"message":"refused"}`))
+				return
+			}
 
 			newID := RecordID(fmt.Sprintf("%d", len(ms.records[zoneID])+100))
 			newRecord := Record{
@@ -514,6 +520,61 @@ func TestApplyChanges_CreateMultipleTargets(t *testing.T) {
 
 	if !contents["1.1.1.1"] || !contents["2.2.2.2"] {
 		t.Error("Expected creates for both 1.1.1.1 and 2.2.2.2")
+	}
+}
+
+// A 409 on create means the exact record already exists, so the create counts
+// as done; any other refusal must still fail the reconcile.
+func TestApplyChanges_CreateConflictIsIdempotent(t *testing.T) {
+	tests := []struct {
+		status  int
+		wantErr bool
+	}{
+		{http.StatusConflict, false},
+		{http.StatusBadRequest, true},
+		{http.StatusNotFound, true},
+		{http.StatusUnprocessableEntity, true},
+		{http.StatusInternalServerError, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(strconv.Itoa(tt.status), func(t *testing.T) {
+			ms := newMockServer([]Zone{{ID: 1, Name: "example.com"}}, map[int][]Record{1: {}})
+			ms.createStatus = tt.status
+			defer ms.Close()
+
+			domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
+			provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+			if err != nil {
+				t.Fatalf("Failed to create provider: %v", err)
+			}
+
+			changes := &plan.Changes{
+				Create: []*endpoint.Endpoint{
+					{
+						DNSName:    "www.example.com",
+						RecordType: "A",
+						Targets:    endpoint.Targets{"1.1.1.1", "2.2.2.2"},
+						RecordTTL:  300,
+					},
+				},
+			}
+
+			err = provider.ApplyChanges(context.Background(), changes)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Expected ApplyChanges to fail on status %d", tt.status)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Expected 409 to be treated as success, got: %v", err)
+			}
+			// Both targets are attempted: the first conflict does not stop the loop.
+			if len(ms.createCalls) != 2 {
+				t.Errorf("Expected 2 create calls, got %d", len(ms.createCalls))
+			}
+		})
 	}
 }
 
