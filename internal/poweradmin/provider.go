@@ -2,7 +2,9 @@ package poweradmin
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -443,6 +445,13 @@ func (p *Provider) createOne(ctx context.Context, zone *Zone, recordName, record
 	}
 
 	_, err = p.client.CreateRecord(ctx, zone.ID, req)
+	// PowerAdmin answers 409 when the exact record already exists (a retry or
+	// a race); the desired state holds, so keep the reconcile going.
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
+		log.Infof("Record %s %s %s already exists in zone %s, skipping", recordName, recordType, content, zone.Name)
+		return nil
+	}
 	return err
 }
 
