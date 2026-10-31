@@ -34,13 +34,13 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 
 | Webhook Version | PowerAdmin Version | Go | Notes |
 |---|---|---|---|
-| 1.5.1+ | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.27.3 | external-dns v0.24.0; distroless Debian 13 |
-| 1.5.0 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.27.0 | API v1 deprecated (removed in Poweradmin 4.5.0) |
+| 1.5.1+ | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.27.3 | Distroless Debian 13 |
+| 1.5.0 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.27.0 | API v1 deprecated |
 | 1.4.18 - 1.4.19 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.27.0 | Go module updates |
-| 1.4.7 - 1.4.17 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.6 | Go bumped for GO-2026-6089, GO-2026-6090, GO-2026-6091, GO-2026-6218, GO-2026-5972 |
-| 1.4.0 - 1.4.6 | 4.3.0 - 4.4.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.5 | Go bumped for CVE-2026-42505, CVE-2026-39822; HTTP redirects from PowerAdmin are refused |
-| 1.2.6 - 1.3.0 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.3 | Go bumped for GO-2026-4918 |
-| 1.2.0 - 1.2.5 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.23 | v2 wrapped API responses |
+| 1.4.7 - 1.4.17 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.6 | Go security fixes |
+| 1.4.0 - 1.4.6 | 4.3.0 - 4.4.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.5 | Go security fixes; redirects refused |
+| 1.2.6 - 1.3.0 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.3 | Go security fix |
+| 1.2.0 - 1.2.5 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.23 | API v2 support |
 | 1.0.0 - 1.1.2 | 4.1.0 - 4.2.x | >= 1.23 | Initial release |
 
 ## Configuration
