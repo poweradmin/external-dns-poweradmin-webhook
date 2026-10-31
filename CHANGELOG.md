@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.5.2...v2.0.0) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* drop PowerAdmin API v1 support ([#193](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/193))
+
+### Features
+
+* drop PowerAdmin API v1 support ([#193](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/193)) ([fc09d38](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/fc09d38da8a8985cb910d10ef1f11754066144b2))
+
+
+### Documentation
+
+* add upgrade notes for 2.0.0 ([#195](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/195)) ([bde960f](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/bde960fdb6c96cab3da70c8fb6c63b0d89d9ae20))
+
 ## [1.5.2](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.5.1...v1.5.2) (2026-10-31)
 
 
