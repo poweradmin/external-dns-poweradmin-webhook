@@ -27,8 +27,7 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 ## Compatibility
 
 > [!IMPORTANT]
-> 2.0.0 removes API v1 support. `POWERADMIN_API_VERSION=v1` now fails at startup; unset it
-> or set it to `v2`. For Poweradmin 4.1.0 - 4.2.x (v1 only), stay on 1.5.x.
+> 2.0.0 removes API v1 support. See [Upgrading to 2.0.0](#upgrading-to-200).
 
 | Webhook Version | PowerAdmin Version | Go | Notes |
 |---|---|---|---|
@@ -41,6 +40,13 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 | 1.2.6 - 1.3.0 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.3 | Go security fix |
 | 1.2.0 - 1.2.5 | 4.3.0+ (v2), 4.1.0 - 4.4.x (v1) | >= 1.23 | API v2 support |
 | 1.0.0 - 1.1.2 | 4.1.0 - 4.2.x | >= 1.23 | Initial release |
+
+### Upgrading to 2.0.0
+
+1. Check that PowerAdmin is 4.3.0 or later with API v2 enabled. On 4.1.0 - 4.2.x, stay on 1.5.x.
+2. Remove `POWERADMIN_API_VERSION=v1` from your deployment, or set it to `v2`. Any other
+   value now stops the webhook at startup with `API v1 was removed in 2.0.0`.
+3. Nothing else changes: the API key, domain filters and record handling work as in 1.5.x.
 
 ## Configuration
 
