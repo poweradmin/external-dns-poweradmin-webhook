@@ -56,37 +56,18 @@ func (r *RecordID) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// APIVersion represents the PowerAdmin API version
-type APIVersion string
-
-const (
-	// APIVersionV1 is the v1 API version
-	APIVersionV1 APIVersion = "v1"
-	// APIVersionV2 is the v2 API version (default)
-	APIVersionV2 APIVersion = "v2"
-)
-
-// v1RemovedMessage replaces the server text when PowerAdmin answers 410 Gone
-// to a v1 call, so the log says which setting to change.
-const v1RemovedMessage = "API v1 was removed in PowerAdmin 4.5.0; set POWERADMIN_API_VERSION=v2"
-
 // Client is a PowerAdmin API client
 type Client struct {
 	baseURL    string
 	apiKey     string
-	apiVersion APIVersion
 	httpClient *http.Client
 }
 
-// NewClient creates a new PowerAdmin API client with the specified API version
-func NewClient(baseURL, apiKey string, apiVersion APIVersion) *Client {
-	if apiVersion == "" {
-		apiVersion = APIVersionV2
-	}
+// NewClient creates a new PowerAdmin API v2 client
+func NewClient(baseURL, apiKey string) *Client {
 	return &Client{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKey:     apiKey,
-		apiVersion: apiVersion,
+		baseURL: strings.TrimRight(baseURL, "/"),
+		apiKey:  apiKey,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			// Following a redirect turns POST/PUT/DELETE into a body-less GET
@@ -222,19 +203,6 @@ type ZonesResponseV2 struct {
 	} `json:"data"`
 }
 
-// ZonesResponseV1 represents the response from the zones list endpoint (V1 API)
-type ZonesResponseV1 struct {
-	ResponseStatus
-	Data []Zone `json:"data"`
-}
-
-// RecordsResponseV1 represents the response from the records list endpoint (V1 API)
-// V1 returns the records array directly in the data field.
-type RecordsResponseV1 struct {
-	ResponseStatus
-	Data []Record `json:"data"`
-}
-
 // RecordsResponseV2Records represents the response from the records list endpoint (V2 API)
 // V2 wraps records inside a data.records object.
 type RecordsResponseV2Records struct {
@@ -254,20 +222,6 @@ type RecordResponseV2 struct {
 	} `json:"data"`
 }
 
-// RecordResponseV1 represents the response from a single record operation (V1 API)
-type RecordResponseV1 struct {
-	ResponseStatus
-	Data struct {
-		RecordID RecordID `json:"record_id"`
-		Name     string   `json:"name"`
-		Type     string   `json:"type"`
-		Content  string   `json:"content"`
-		TTL      int      `json:"ttl"`
-		Priority *int     `json:"priority,omitempty"`
-		Disabled FlexBool `json:"disabled"`
-	} `json:"data"`
-}
-
 // maxResponseBytes caps how much of an API response body is read.
 const maxResponseBytes = 1 << 20
 
@@ -282,7 +236,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
-	reqURL := fmt.Sprintf("%s/api/%s%s", c.baseURL, c.apiVersion, path)
+	reqURL := fmt.Sprintf("%s/api/v2%s", c.baseURL, path)
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -305,10 +259,6 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode == http.StatusGone && c.apiVersion == APIVersionV1 {
-		return nil, &APIError{StatusCode: resp.StatusCode, Message: v1RemovedMessage}
-	}
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		message := string(respBody)
 		var apiResp APIResponse
@@ -328,15 +278,6 @@ func (c *Client) ListZones(ctx context.Context) ([]Zone, error) {
 		return nil, err
 	}
 
-	if c.apiVersion == APIVersionV1 {
-		response, err := decodeResponse[ZonesResponseV1](respBody, "zones")
-		if err != nil {
-			return nil, err
-		}
-		return response.Data, nil
-	}
-
-	// V2 API
 	response, err := decodeResponse[ZonesResponseV2](respBody, "zones")
 	if err != nil {
 		return nil, err
@@ -352,15 +293,6 @@ func (c *Client) ListRecords(ctx context.Context, zoneID int) ([]Record, error) 
 		return nil, err
 	}
 
-	if c.apiVersion == APIVersionV1 {
-		response, err := decodeResponse[RecordsResponseV1](respBody, "records")
-		if err != nil {
-			return nil, err
-		}
-		return response.Data, nil
-	}
-
-	// V2 API
 	response, err := decodeResponse[RecordsResponseV2Records](respBody, "records")
 	if err != nil {
 		return nil, err
@@ -376,25 +308,6 @@ func (c *Client) CreateRecord(ctx context.Context, zoneID int, record CreateReco
 		return nil, err
 	}
 
-	if c.apiVersion == APIVersionV1 {
-		response, err := decodeResponse[RecordResponseV1](respBody, "create record")
-		if err != nil {
-			return nil, err
-		}
-		// Convert V1 response to Record
-		return &Record{
-			ID:       response.Data.RecordID,
-			ZoneID:   zoneID,
-			Name:     response.Data.Name,
-			Type:     response.Data.Type,
-			Content:  response.Data.Content,
-			TTL:      response.Data.TTL,
-			Priority: response.Data.Priority,
-			Disabled: response.Data.Disabled,
-		}, nil
-	}
-
-	// V2 API
 	response, err := decodeResponse[RecordResponseV2](respBody, "create record")
 	if err != nil {
 		return nil, err
@@ -413,25 +326,6 @@ func (c *Client) UpdateRecord(ctx context.Context, zoneID int, recordID RecordID
 		return nil, err
 	}
 
-	if c.apiVersion == APIVersionV1 {
-		// V1 API returns null data on update success
-		if _, err := decodeResponse[APIResponse](respBody, "update record"); err != nil {
-			return nil, err
-		}
-		// V1 doesn't return the updated record, construct from request
-		return &Record{
-			ID:       recordID,
-			ZoneID:   zoneID,
-			Name:     record.Name,
-			Type:     record.Type,
-			Content:  record.Content,
-			TTL:      record.TTL,
-			Priority: record.Priority,
-			Disabled: FlexBool(record.Disabled),
-		}, nil
-	}
-
-	// V2 API
 	response, err := decodeResponse[RecordResponseV2](respBody, "update record")
 	if err != nil {
 		return nil, err

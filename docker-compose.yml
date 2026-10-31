@@ -36,9 +36,6 @@
 #   curl -H "X-API-Key: test-api-key-for-integration" \
 #     http://localhost:9090/api/v2/zones
 #
-#   # API v1 was removed in PowerAdmin 4.5.0. To test v1, run an older image:
-#   POWERADMIN_IMAGE=poweradmin/poweradmin:4.4.2 docker compose up -d
-#
 #   docker compose down -v
 
 services:

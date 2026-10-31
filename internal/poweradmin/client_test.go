@@ -18,7 +18,7 @@ func TestDeleteRecord_NotFoundIsIdempotent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key", APIVersionV2)
+	client := NewClient(server.URL, "test-key")
 	if err := client.DeleteRecord(context.Background(), 1, "999"); err != nil {
 		t.Errorf("expected nil (idempotent) for 404 on delete, got: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestDeleteRecord_SuccessFalseIsError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key", APIVersionV2)
+	client := NewClient(server.URL, "test-key")
 	err := client.DeleteRecord(context.Background(), 1, "999")
 	if err == nil {
 		t.Fatal("expected error for 200 response with success=false")
@@ -49,7 +49,7 @@ func TestDeleteRecord_NoContentIsSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key", APIVersionV2)
+	client := NewClient(server.URL, "test-key")
 	if err := client.DeleteRecord(context.Background(), 1, "999"); err != nil {
 		t.Errorf("expected nil for 204 delete, got: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestCreateRecord_MissingRecordObject(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key", APIVersionV2)
+	client := NewClient(server.URL, "test-key")
 	_, err := client.CreateRecord(context.Background(), 1, CreateRecordRequest{
 		Name: "test.example.com", Type: "A", Content: "192.0.2.1", TTL: 300,
 	})
@@ -89,7 +89,7 @@ func TestResponseBodyCapped(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key", APIVersionV2)
+	client := NewClient(server.URL, "test-key")
 	_, err := client.ListZones(context.Background())
 	if err == nil {
 		t.Fatal("expected error for response body exceeding the read cap")
@@ -106,7 +106,7 @@ func TestNewClient_TrimsTrailingSlash(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL+"/", "test-key", APIVersionV2)
+	client := NewClient(server.URL+"/", "test-key")
 	if _, err := client.ListZones(context.Background()); err != nil {
 		t.Fatalf("ListZones failed: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestDeleteRecord_ServerErrorReturnsAPIError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key", APIVersionV2)
+	client := NewClient(server.URL, "test-key")
 	err := client.DeleteRecord(context.Background(), 1, "999")
 	if err == nil {
 		t.Fatal("expected error for 500 on delete")
@@ -139,31 +139,6 @@ func TestDeleteRecord_ServerErrorReturnsAPIError(t *testing.T) {
 	}
 	if apiErr.Message != "Failed to delete record" {
 		t.Errorf("expected parsed API message, got %q", apiErr.Message)
-	}
-}
-
-// The v1 API is PHP-backed and returns disabled inconsistently (bool, int,
-// string); the create response must tolerate every form, same as FlexBool
-// does for record listings.
-func TestCreateRecordV1_DisabledAsBool(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"success":true,"data":{"record_id":42,"name":"www","type":"A","content":"1.1.1.1","ttl":300,"disabled":false}}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL, "test-key", APIVersionV1)
-	record, err := client.CreateRecord(context.Background(), 1, CreateRecordRequest{
-		Name: "www", Type: "A", Content: "1.1.1.1", TTL: 300,
-	})
-	if err != nil {
-		t.Fatalf("CreateRecord failed on bool disabled in v1 response: %v", err)
-	}
-	if record.ID != "42" {
-		t.Errorf("expected record ID 42, got %s", record.ID)
-	}
-	if bool(record.Disabled) {
-		t.Error("expected disabled=false")
 	}
 }
 
@@ -186,7 +161,7 @@ func TestRecordID_StringIDsRoundTrip(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key", APIVersionV2)
+	client := NewClient(server.URL, "test-key")
 
 	records, err := client.ListRecords(context.Background(), 1)
 	if err != nil {
@@ -221,7 +196,7 @@ func TestRecordID_NumericIDsStillDecode(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, "test-key", APIVersionV2)
+	client := NewClient(server.URL, "test-key")
 	records, err := client.ListRecords(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("ListRecords failed on numeric record ID: %v", err)
@@ -244,57 +219,12 @@ func TestClient_RefusesRedirects(t *testing.T) {
 	}))
 	defer redirector.Close()
 
-	client := NewClient(redirector.URL, "test-key", APIVersionV2)
+	client := NewClient(redirector.URL, "test-key")
 	_, err := client.ListZones(context.Background())
 	if err == nil {
 		t.Fatal("expected error when the API URL redirects")
 	}
 	if !strings.Contains(err.Error(), "redirect") {
 		t.Errorf("expected redirect refusal in error, got: %v", err)
-	}
-}
-
-// PowerAdmin 4.5.0 answers every /api/v1 call with 410 Gone; the error must
-// tell the user to switch to v2 instead of echoing a generic API failure.
-func TestV1Gone_ErrorPointsToV2(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusGone)
-		_, _ = w.Write([]byte(`{"error":true,"message":"API v1 was removed in Poweradmin 4.5.0. Use /api/v2 instead."}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL, "test-key", APIVersionV1)
-	_, err := client.ListZones(context.Background())
-	if err == nil {
-		t.Fatal("expected error for 410 on v1")
-	}
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusGone {
-		t.Fatalf("expected *APIError with status 410, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "POWERADMIN_API_VERSION=v2") {
-		t.Errorf("expected advice to switch to v2, got: %v", err)
-	}
-}
-
-// A 410 on v2 is not the v1 removal; keep the server message and do not
-// advise switching versions.
-func TestV2Gone_KeepsServerMessage(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusGone)
-		_, _ = w.Write([]byte(`{"success":false,"message":"Zone is gone"}`))
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL, "test-key", APIVersionV2)
-	_, err := client.ListZones(context.Background())
-	if err == nil {
-		t.Fatal("expected error for 410 on v2")
-	}
-	if strings.Contains(err.Error(), "POWERADMIN_API_VERSION") {
-		t.Errorf("v2 error must not advise switching versions, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "Zone is gone") {
-		t.Errorf("expected server message in error, got: %v", err)
 	}
 }

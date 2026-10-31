@@ -11,10 +11,6 @@ cd "$PROJECT_ROOT"
 POWERADMIN_PORT="${POWERADMIN_PORT:-9090}"
 WEBHOOK_PORT="${WEBHOOK_PORT:-8888}"
 METRICS_PORT="${METRICS_PORT:-8080}"
-# v2 runs against POWERADMIN_IMAGE (compose default: latest). API v1 was
-# removed in PowerAdmin 4.5.0, so the v1 pass runs against an older image.
-V1_POWERADMIN_IMAGE="${V1_POWERADMIN_IMAGE:-poweradmin/poweradmin:4.4.2}"
-SKIP_V1_TESTS="${SKIP_V1_TESTS:-false}"
 API_KEY="test-api-key-for-integration"
 DOMAIN="integration-test.example.com"
 WEBHOOK_PID=""
@@ -315,20 +311,14 @@ test_cross_verify_poweradmin() {
     echo "$zones_response" | jq -e '.' >/dev/null 2>&1
 }
 
-# PowerAdmin 4.5.0+ answers /api/v1 with 410; a v1 webhook must stay unready
-# and log the advice to switch to v2.
-test_v1_gone_points_to_v2() {
-    local status
-    status=$(curl -s -o /dev/null -w "%{http_code}" "$(metrics_url)/readyz")
-    [ "$status" = "503" ] || return 1
-    grep -q "status 410: API v1 was removed.*POWERADMIN_API_VERSION=v2" "$WEBHOOK_LOG"
-}
-
-v1_removed() {
-    local status
-    status=$(curl -s -o /dev/null -w "%{http_code}" -H "X-API-Key: ${API_KEY}" \
-        "$(poweradmin_url)/api/v1/zones")
-    [ "$status" = "410" ]
+# API v1 support was removed; a leftover v1 setting must fail at startup.
+test_v1_setting_fails_startup() {
+    local output
+    if output=$(POWERADMIN_URL="$(poweradmin_url)" POWERADMIN_API_KEY="${API_KEY}" \
+        POWERADMIN_API_VERSION=v1 ./external-dns-poweradmin-webhook 2>&1); then
+        return 1
+    fi
+    echo "$output" | grep -q "API v1 was removed"
 }
 
 # --- Test Runner ---
@@ -363,23 +353,7 @@ main() {
     run_all_tests "v2"
     stop_webhook
 
-    if v1_removed; then
-        start_webhook "v1"
-        run_test "v1 on PowerAdmin without v1: points to v2" test_v1_gone_points_to_v2
-        stop_webhook
-    fi
-
-    if [ "$SKIP_V1_TESTS" = "true" ]; then
-        log_warn "Skipping v1 tests (SKIP_V1_TESTS=true)"
-        return
-    fi
-
-    stop_poweradmin
-    POWERADMIN_IMAGE="$V1_POWERADMIN_IMAGE" setup_poweradmin
-
-    start_webhook "v1"
-    run_all_tests "v1"
-    stop_webhook
+    run_test "v1 setting fails at startup" test_v1_setting_fails_startup
 }
 
 main "$@"

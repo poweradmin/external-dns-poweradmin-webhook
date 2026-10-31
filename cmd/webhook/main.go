@@ -108,18 +108,15 @@ func main() {
 		}
 	}
 
-	// Parse and validate API version
-	apiVersion := poweradmin.APIVersion(cfg.PowerAdminAPIVersion)
-	if apiVersion != poweradmin.APIVersionV1 && apiVersion != poweradmin.APIVersionV2 {
-		log.Fatalf("Invalid API version %s, must be 'v1' or 'v2'", cfg.PowerAdminAPIVersion)
+	// Only v2 is supported; fail loudly so an old v1 setting is not silently ignored
+	if cfg.PowerAdminAPIVersion != "v2" {
+		log.Fatalf("Invalid API version %q: API v1 was removed in 2.0.0, unset POWERADMIN_API_VERSION or set it to v2", cfg.PowerAdminAPIVersion)
 	}
-	log.Infof("Using PowerAdmin API version: %s", apiVersion)
 
 	// Create provider
 	provider, err := poweradmin.NewProvider(
 		cfg.PowerAdminURL,
 		cfg.PowerAdminAPIKey,
-		apiVersion,
 		domainFilter,
 		cfg.DryRun,
 	)

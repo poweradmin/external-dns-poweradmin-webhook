@@ -20,9 +20,6 @@ const (
 	DefaultTTL = 3600
 )
 
-// v1DeprecationWarning is logged at startup when POWERADMIN_API_VERSION=v1.
-const v1DeprecationWarning = "PowerAdmin API v1 is deprecated and only works with PowerAdmin below 4.5.0; set POWERADMIN_API_VERSION=v2"
-
 // Provider implements the external-dns provider interface for PowerAdmin
 type Provider struct {
 	provider.BaseProvider
@@ -35,7 +32,7 @@ type Provider struct {
 }
 
 // NewProvider creates a new PowerAdmin provider
-func NewProvider(baseURL, apiKey string, apiVersion APIVersion, domainFilter *endpoint.DomainFilter, dryRun bool) (*Provider, error) {
+func NewProvider(baseURL, apiKey string, domainFilter *endpoint.DomainFilter, dryRun bool) (*Provider, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("PowerAdmin base URL is required")
 	}
@@ -43,11 +40,7 @@ func NewProvider(baseURL, apiKey string, apiVersion APIVersion, domainFilter *en
 		return nil, fmt.Errorf("PowerAdmin API key is required")
 	}
 
-	if apiVersion == APIVersionV1 {
-		log.Warn(v1DeprecationWarning)
-	}
-
-	client := NewClient(baseURL, apiKey, apiVersion)
+	client := NewClient(baseURL, apiKey)
 
 	return &Provider{
 		client:       client,
