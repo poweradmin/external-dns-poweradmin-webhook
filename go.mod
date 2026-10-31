@@ -1,4 +1,4 @@
-module github.com/poweradmin/external-dns-poweradmin-webhook
+module github.com/poweradmin/external-dns-poweradmin-webhook/v2
 
 go 1.27.3
 
