@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.5.0...v1.5.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **provider:** treat a 409 on record create as already existing ([#188](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/188)) ([c88e79c](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/c88e79ce20edfb5e14b03253d5d09aafd243f54d))
+
+
+### Dependency Updates
+
+* bump external-dns to v0.24.0, x/net to v0.62.0, Go to 1.27.3 and distroless to Debian 13 ([#190](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/190)) ([25f3235](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/25f3235f25fda313995f3f497bb79878dd9f44e4))
+* bump github.com/prometheus/procfs ([#187](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/187)) ([2519d08](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/2519d082668f3d52d86e7d781d2fa346972479ac))
+
 ## [1.5.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.4.19...v1.5.0) (2026-10-20)
 
 
