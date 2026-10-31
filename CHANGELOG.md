@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.5.1...v1.5.2) (2026-10-31)
+
+
+### Dependency Updates
+
+* refresh indirect Go modules and pin the goreleaser distroless image by digest ([#191](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/191)) ([070833b](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/070833b7609e1ac5eeb08dee671092699e1c6a5d))
+
 ## [1.5.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.5.0...v1.5.1) (2026-10-31)
 
 
