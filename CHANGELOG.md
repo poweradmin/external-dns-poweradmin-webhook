@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v2.0.0...v2.0.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* use the /v2 Go module path for the 2.x releases ([#196](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/196)) ([e8b6509](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/e8b6509e3a9c7d61a7d1fec6bfa642245ae3add8))
+
 ## [2.0.0](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v1.5.2...v2.0.0) (2026-10-31)
 
 
