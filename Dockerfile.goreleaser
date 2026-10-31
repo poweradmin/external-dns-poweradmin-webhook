@@ -1,4 +1,4 @@
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 ARG TARGETPLATFORM
 USER 20000:20000
 COPY --chmod=555 ${TARGETPLATFORM}/external-dns-poweradmin-webhook /usr/local/bin/
