@@ -10,7 +10,7 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 
 ## Features
 
-- Full integration with the Poweradmin API (v2; v1 only against Poweradmin below 4.5.0)
+- Full integration with the Poweradmin API v2
 - Supports A, AAAA, CNAME, TXT, MX, NS, SRV, PTR, CAA, and LUA record types
 - Domain filtering support
 - Dry-run mode for testing
@@ -19,7 +19,7 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 
 ## Requirements
 
-- Poweradmin with the API enabled (v2 recommended; v1 only below 4.5.0)
+- Poweradmin 4.3.0 or later with the API enabled
 - API key with appropriate permissions
 - Kubernetes cluster (for deployment)
 - ExternalDNS v0.20.0 or later
@@ -27,14 +27,13 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 ## Compatibility
 
 > [!IMPORTANT]
-> Poweradmin 4.5.0 removes API v1: `/api/v1/*` answers `410 Gone`. Set
-> `POWERADMIN_API_VERSION=v2` before upgrading Poweradmin to 4.5.0 or later. API v1 remains
-> available on Poweradmin 4.1.0 - 4.4.x and is deprecated in this webhook: it logs a warning
-> at startup and will be removed in the next major release.
+> 2.0.0 removes API v1 support. `POWERADMIN_API_VERSION=v1` now fails at startup; unset it
+> or set it to `v2`. For Poweradmin 4.1.0 - 4.2.x (v1 only), stay on 1.5.x.
 
 | Webhook Version | PowerAdmin Version | Go | Notes |
 |---|---|---|---|
-| 1.5.1+ | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.27.3 | Distroless Debian 13 |
+| 2.0.0+ | 4.3.0+ (v2) | >= 1.27.3 | API v1 removed |
+| 1.5.1 - 1.5.2 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.27.3 | Distroless Debian 13 |
 | 1.5.0 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.27.0 | API v1 deprecated |
 | 1.4.18 - 1.4.19 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.27.0 | Go module updates |
 | 1.4.7 - 1.4.17 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.26.6 | Go security fixes |
@@ -51,7 +50,7 @@ The webhook is configured via environment variables:
 |----------|----------|---------|-------------|
 | `POWERADMIN_URL` | Yes | - | Base URL of your PowerAdmin instance |
 | `POWERADMIN_API_KEY` | Yes | - | API key for authentication |
-| `POWERADMIN_API_VERSION` | No | `v2` | API version to use (`v1` or `v2`); v1 requires Poweradmin below 4.5.0 |
+| `POWERADMIN_API_VERSION` | No | `v2` | API version; only `v2` is accepted |
 | `DOMAIN_FILTER` | No | - | Comma-separated list of domains to manage |
 | `EXCLUDE_DOMAIN_FILTER` | No | - | Comma-separated list of domains to exclude |
 | `REGEXP_DOMAIN_FILTER` | No | - | Regex pattern for domain filtering |
@@ -228,12 +227,11 @@ export DOMAIN_FILTER=example.com
 
 ## PowerAdmin API Requirements
 
-The webhook uses PowerAdmin API v2 by default. API v1 is deprecated and only works with
-PowerAdmin below 4.5.0 (`POWERADMIN_API_VERSION=v1`); PowerAdmin 4.5.0 removed it.
+The webhook uses PowerAdmin API v2 (PowerAdmin 4.3.0+).
 
 Ensure your PowerAdmin instance has:
 
-1. API enabled (v2; v1 only below 4.5.0)
+1. API enabled
 2. An API key created with permissions to:
    - List zones
    - List records

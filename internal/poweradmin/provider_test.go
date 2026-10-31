@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	logtest "github.com/sirupsen/logrus/hooks/test"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 )
@@ -181,7 +180,7 @@ func TestUpdateRecord_MultipleTargets(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -235,7 +234,7 @@ func TestUpdateRecord_DuplicateTargets(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -305,7 +304,7 @@ func TestRecords_AggregatesMultiTarget(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -349,7 +348,7 @@ func TestUpdateRecord_AddTarget(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -401,7 +400,7 @@ func TestUpdateRecord_RemoveTarget(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -449,7 +448,7 @@ func TestUpdateRecord_RecreatesDriftedRecord(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -487,7 +486,7 @@ func TestApplyChanges_CreateMultipleTargets(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -544,7 +543,7 @@ func TestApplyChanges_CreateConflictIsIdempotent(t *testing.T) {
 			defer ms.Close()
 
 			domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-			provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+			provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 			if err != nil {
 				t.Fatalf("Failed to create provider: %v", err)
 			}
@@ -722,7 +721,7 @@ func TestRecords_SRVWithPriority(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -752,7 +751,7 @@ func TestCreateRecord_SRV(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -804,19 +803,19 @@ func TestNewProvider_Validation(t *testing.T) {
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
 
 	// Missing URL
-	_, err := NewProvider("", "api-key", APIVersionV2, domainFilter, false)
+	_, err := NewProvider("", "api-key", domainFilter, false)
 	if err == nil {
 		t.Error("Expected error for missing URL")
 	}
 
 	// Missing API key
-	_, err = NewProvider("http://example.com", "", APIVersionV2, domainFilter, false)
+	_, err = NewProvider("http://example.com", "", domainFilter, false)
 	if err == nil {
 		t.Error("Expected error for missing API key")
 	}
 
 	// Valid config
-	_, err = NewProvider("http://example.com", "api-key", APIVersionV2, domainFilter, false)
+	_, err = NewProvider("http://example.com", "api-key", domainFilter, false)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -824,7 +823,7 @@ func TestNewProvider_Validation(t *testing.T) {
 
 func TestGetDomainFilter(t *testing.T) {
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com", "test.com"})
-	provider, err := NewProvider("http://example.com", "api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider("http://example.com", "api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -847,7 +846,7 @@ func TestGetDomainFilter(t *testing.T) {
 
 func TestAdjustEndpoints(t *testing.T) {
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider("http://example.com", "api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider("http://example.com", "api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -877,7 +876,7 @@ func TestApplyChanges_NoChanges(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -916,7 +915,7 @@ func TestApplyChanges_Delete(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -977,7 +976,7 @@ func TestApplyChanges_DryRun(t *testing.T) {
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
 	// Enable dry-run mode
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, true)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, true)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1037,7 +1036,7 @@ func TestRecords_FiltersByDomain(t *testing.T) {
 
 	// Only filter for example.com
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1071,7 +1070,7 @@ func TestRecords_FailsOnZoneListError(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com", "broken.org"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1089,7 +1088,7 @@ func TestApplyChanges_NarrowerFilterThanZone(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"app.example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1127,7 +1126,7 @@ func TestRecords_NarrowerFilterThanZone(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"app.example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1156,7 +1155,7 @@ func TestZoneCache_EvictsRemovedZones(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com", "other.org"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1188,7 +1187,7 @@ func TestProvider_ConcurrentAccess(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1219,7 +1218,7 @@ func TestProviderHealth(t *testing.T) {
 		_, _ = w.Write([]byte(`{"success":true,"data":{"zones":[]}}`))
 	}))
 
-	provider, err := NewProvider(server.URL, "test-key", APIVersionV2, nil, false)
+	provider, err := NewProvider(server.URL, "test-key", nil, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1243,7 +1242,7 @@ func TestRecords_EmptyZone(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1274,7 +1273,7 @@ func TestRecords_SkipsSOAandNS(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1307,7 +1306,7 @@ func TestFindZoneForEndpoint(t *testing.T) {
 	}
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com", "sub.example.com"})
-	provider, err := NewProvider("http://example.com", "api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider("http://example.com", "api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1343,7 +1342,7 @@ func TestFindZoneForEndpoint_NoMatch(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider("http://example.com", "api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider("http://example.com", "api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1367,7 +1366,7 @@ func TestCreateRecord_MixedCaseEndpoint(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1433,7 +1432,7 @@ func TestRecords_NormalizesMixedCaseNames(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1469,7 +1468,7 @@ func TestRecords_MXWithPriority(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1504,7 +1503,7 @@ func TestRecords_LUA(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1539,7 +1538,7 @@ func TestApplyChanges_MixedOperations(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1575,201 +1574,6 @@ func TestApplyChanges_MixedOperations(t *testing.T) {
 	}
 }
 
-// newMockServerV1 creates a test server that responds with V1 API format
-func newMockServerV1(zones []Zone, records map[int][]Record) *mockServer {
-	ms := &mockServer{
-		zones:   zones,
-		records: records,
-	}
-
-	mux := http.NewServeMux()
-
-	// List zones - V1 returns array directly in data
-	mux.HandleFunc("/api/v1/zones", func(w http.ResponseWriter, _ *http.Request) {
-		resp := ZonesResponseV1{ResponseStatus: ResponseStatus{Success: true}, Data: ms.zones}
-		_ = json.NewEncoder(w).Encode(resp)
-	})
-
-	// Zone records - handles all /api/v1/zones/{id}/* paths
-	mux.HandleFunc("/api/v1/zones/", func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-
-		// Parse zone ID and optional record ID
-		var zoneID int
-		var recordID RecordID
-		hasRecordID := false
-
-		if strings.Contains(path, "/records/") {
-			// /api/v1/zones/{zoneID}/records/{recordID}
-			var rid string
-			_, _ = fmt.Sscanf(path, "/api/v1/zones/%d/records/%s", &zoneID, &rid)
-			recordID = RecordID(rid)
-			hasRecordID = true
-		} else if strings.HasSuffix(path, "/records") {
-			// /api/v1/zones/{zoneID}/records
-			_, _ = fmt.Sscanf(path, "/api/v1/zones/%d/records", &zoneID)
-		} else {
-			// /api/v1/zones/{zoneID}
-			_, _ = fmt.Sscanf(path, "/api/v1/zones/%d", &zoneID)
-		}
-
-		switch r.Method {
-		case http.MethodGet:
-			// V1 API returns disabled as integer (0/1), so we build raw JSON
-			// to simulate real API behavior instead of using RecordsResponse
-			// which would serialize FlexBool as a boolean.
-			if recs, ok := ms.records[zoneID]; ok {
-				type v1Record struct {
-					ID       int    `json:"id"`
-					ZoneID   int    `json:"zone_id"`
-					Name     string `json:"name"`
-					Type     string `json:"type"`
-					Content  string `json:"content"`
-					TTL      int    `json:"ttl"`
-					Priority *int   `json:"priority,omitempty"`
-					Disabled int    `json:"disabled"`
-				}
-				var v1Recs []v1Record
-				for _, r := range recs {
-					d := 0
-					if r.Disabled {
-						d = 1
-					}
-					id, _ := strconv.Atoi(string(r.ID))
-					v1Recs = append(v1Recs, v1Record{
-						ID: id, ZoneID: r.ZoneID, Name: r.Name,
-						Type: r.Type, Content: r.Content, TTL: r.TTL,
-						Priority: r.Priority, Disabled: d,
-					})
-				}
-				resp := struct {
-					Success bool       `json:"success"`
-					Message string     `json:"message"`
-					Data    []v1Record `json:"data"`
-				}{Success: true, Data: v1Recs}
-				_ = json.NewEncoder(w).Encode(resp)
-			} else {
-				_, _ = w.Write([]byte(`{"success":true,"data":[]}`))
-			}
-
-		case http.MethodPost:
-			var req CreateRecordRequest
-			_ = json.NewDecoder(r.Body).Decode(&req)
-			ms.createCalls = append(ms.createCalls, req)
-
-			newID := RecordID(fmt.Sprintf("%d", len(ms.records[zoneID])+100))
-			// V1 returns flat structure with record_id
-			resp := RecordResponseV1{ResponseStatus: ResponseStatus{Success: true}}
-			resp.Data.RecordID = newID
-			resp.Data.Name = req.Name
-			resp.Data.Type = req.Type
-			resp.Data.Content = req.Content
-			resp.Data.TTL = req.TTL
-			resp.Data.Priority = req.Priority
-			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(resp)
-
-		case http.MethodPut:
-			if hasRecordID {
-				var req UpdateRecordRequest
-				_ = json.NewDecoder(r.Body).Decode(&req)
-				ms.updateCalls = append(ms.updateCalls, updateCall{
-					zoneID:   zoneID,
-					recordID: recordID,
-					request:  req,
-				})
-				// V1 returns null data on update
-				resp := APIResponse{ResponseStatus: ResponseStatus{Success: true, Message: "Record updated successfully"}}
-				_ = json.NewEncoder(w).Encode(resp)
-			}
-
-		case http.MethodDelete:
-			if hasRecordID {
-				ms.deleteCalls = append(ms.deleteCalls, deleteCall{
-					zoneID:   zoneID,
-					recordID: recordID,
-				})
-				w.WriteHeader(http.StatusNoContent)
-			}
-		}
-	})
-
-	ms.server = httptest.NewServer(mux)
-	return ms
-}
-
-// TestV1API_ListZones verifies V1 API zone listing
-func TestV1API_ListZones(t *testing.T) {
-	zones := []Zone{
-		{ID: 1, Name: "example.com"},
-		{ID: 2, Name: "test.org"},
-	}
-	records := map[int][]Record{1: {}, 2: {}}
-
-	ms := newMockServerV1(zones, records)
-	defer ms.Close()
-
-	domainFilter := endpoint.NewDomainFilter([]string{"example.com", "test.org"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV1, domainFilter, false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-
-	endpoints, err := provider.Records(context.Background())
-	if err != nil {
-		t.Fatalf("Records failed: %v", err)
-	}
-
-	// Should have loaded both zones
-	if len(provider.zoneCache) != 2 {
-		t.Errorf("Expected 2 zones in cache, got %d", len(provider.zoneCache))
-	}
-
-	// No records, so no endpoints
-	if len(endpoints) != 0 {
-		t.Errorf("Expected 0 endpoints, got %d", len(endpoints))
-	}
-}
-
-// TestV1API_CreateRecord verifies V1 API record creation
-func TestV1API_CreateRecord(t *testing.T) {
-	zones := []Zone{{ID: 1, Name: "example.com"}}
-	records := map[int][]Record{1: {}}
-
-	ms := newMockServerV1(zones, records)
-	defer ms.Close()
-
-	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV1, domainFilter, false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-
-	changes := &plan.Changes{
-		Create: []*endpoint.Endpoint{
-			{
-				DNSName:    "www.example.com",
-				RecordType: "A",
-				Targets:    endpoint.Targets{"1.1.1.1"},
-				RecordTTL:  300,
-			},
-		},
-	}
-
-	err = provider.ApplyChanges(context.Background(), changes)
-	if err != nil {
-		t.Fatalf("ApplyChanges failed: %v", err)
-	}
-
-	if len(ms.createCalls) != 1 {
-		t.Errorf("Expected 1 create call, got %d", len(ms.createCalls))
-	}
-
-	if ms.createCalls[0].Content != "1.1.1.1" {
-		t.Errorf("Expected content '1.1.1.1', got %q", ms.createCalls[0].Content)
-	}
-}
-
 // TestCreateRecord_LUA verifies a LUA record is sent with type "LUA", content
 // preserved verbatim, and no priority (PowerAdmin requires priority 0/empty for LUA).
 func TestCreateRecord_LUA(t *testing.T) {
@@ -1781,7 +1585,7 @@ func TestCreateRecord_LUA(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1812,101 +1616,6 @@ func TestCreateRecord_LUA(t *testing.T) {
 	}
 	if ms.createCalls[0].Priority != nil {
 		t.Errorf("Expected nil priority for LUA, got %v", *ms.createCalls[0].Priority)
-	}
-}
-
-// TestV1API_UpdateRecord verifies V1 API record update
-func TestV1API_UpdateRecord(t *testing.T) {
-	zones := []Zone{{ID: 1, Name: "example.com"}}
-	records := map[int][]Record{
-		1: {
-			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-		},
-	}
-
-	ms := newMockServerV1(zones, records)
-	defer ms.Close()
-
-	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV1, domainFilter, false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-	provider.zoneCache = zones[:1]
-
-	oldEp := &endpoint.Endpoint{
-		DNSName:    "www.example.com",
-		RecordType: "A",
-		Targets:    endpoint.Targets{"1.1.1.1"},
-	}
-	newEp := &endpoint.Endpoint{
-		DNSName:    "www.example.com",
-		RecordType: "A",
-		Targets:    endpoint.Targets{"2.2.2.2"},
-		RecordTTL:  600,
-	}
-
-	err = provider.updateRecord(context.Background(), oldEp, newEp)
-	if err != nil {
-		t.Fatalf("updateRecord failed: %v", err)
-	}
-
-	if len(ms.updateCalls) != 1 {
-		t.Errorf("Expected 1 update call, got %d", len(ms.updateCalls))
-	}
-
-	if ms.updateCalls[0].request.Content != "2.2.2.2" {
-		t.Errorf("Expected content '2.2.2.2', got %q", ms.updateCalls[0].request.Content)
-	}
-}
-
-// TestV1API_DeleteRecord verifies V1 API record deletion
-func TestV1API_DeleteRecord(t *testing.T) {
-	zones := []Zone{{ID: 1, Name: "example.com"}}
-	records := map[int][]Record{
-		1: {
-			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
-		},
-	}
-
-	ms := newMockServerV1(zones, records)
-	defer ms.Close()
-
-	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV1, domainFilter, false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-
-	changes := &plan.Changes{
-		Delete: []*endpoint.Endpoint{
-			{
-				DNSName:    "www.example.com",
-				RecordType: "A",
-				Targets:    endpoint.Targets{"1.1.1.1"},
-			},
-		},
-	}
-
-	err = provider.ApplyChanges(context.Background(), changes)
-	if err != nil {
-		t.Fatalf("ApplyChanges failed: %v", err)
-	}
-
-	if len(ms.deleteCalls) != 1 {
-		t.Errorf("Expected 1 delete call, got %d", len(ms.deleteCalls))
-	}
-
-	if ms.deleteCalls[0].recordID != "101" {
-		t.Errorf("Expected record ID 101, got %s", ms.deleteCalls[0].recordID)
-	}
-}
-
-// TestAPIVersionDefault verifies default API version is V2
-func TestAPIVersionDefault(t *testing.T) {
-	client := NewClient("http://example.com", "api-key", "")
-	if client.apiVersion != APIVersionV2 {
-		t.Errorf("Expected default API version to be V2, got %s", client.apiVersion)
 	}
 }
 
@@ -1959,7 +1668,7 @@ func TestRecords_TXTQuoting(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -1985,40 +1694,6 @@ func TestRecords_TXTQuoting(t *testing.T) {
 	}
 }
 
-// TestV1API_ListRecords_DisabledAsInt verifies V1 records with int disabled field are parsed correctly
-func TestV1API_ListRecords_DisabledAsInt(t *testing.T) {
-	zones := []Zone{{ID: 1, Name: "example.com"}}
-	records := map[int][]Record{
-		1: {
-			{ID: "101", ZoneID: 1, Name: "www.example.com", Type: "A", Content: "1.1.1.1", TTL: 300, Disabled: FlexBool(false)},
-			{ID: "102", ZoneID: 1, Name: "disabled.example.com", Type: "A", Content: "2.2.2.2", TTL: 300, Disabled: FlexBool(true)},
-		},
-	}
-
-	ms := newMockServerV1(zones, records)
-	defer ms.Close()
-
-	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV1, domainFilter, false)
-	if err != nil {
-		t.Fatalf("Failed to create provider: %v", err)
-	}
-
-	// The V1 mock returns disabled as int (0/1). This should parse without
-	// error, and the disabled record must be filtered out.
-	endpoints, err := provider.Records(context.Background())
-	if err != nil {
-		t.Fatalf("Records failed (disabled as int should be handled): %v", err)
-	}
-
-	if len(endpoints) != 1 {
-		t.Errorf("Expected 1 endpoint (disabled record filtered), got %d", len(endpoints))
-	}
-	if len(endpoints) > 0 && endpoints[0].DNSName != "www.example.com" {
-		t.Errorf("Expected the enabled record, got %s", endpoints[0].DNSName)
-	}
-}
-
 // TestUpdateRecord_TXTUnquotedContent verifies TXT update/delete works when API returns unquoted content
 func TestUpdateRecord_TXTUnquotedContent(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
@@ -2033,7 +1708,7 @@ func TestUpdateRecord_TXTUnquotedContent(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2080,7 +1755,7 @@ func TestDeleteRecord_TXTUnquotedContent(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2202,7 +1877,7 @@ func TestV2API_ListRecords_DisabledAsInt(t *testing.T) {
 	defer server.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2235,7 +1910,7 @@ func TestApplyChanges_ReEnablesDisabledRecord(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2279,7 +1954,7 @@ func TestUpdateRecord_ReEnablesDisabledRecordForNewTarget(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2332,7 +2007,7 @@ func TestDeleteRecord_SkipsDisabledDuplicate(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2361,7 +2036,7 @@ func TestDeleteRecord_SkipsDisabledDuplicate(t *testing.T) {
 // recreate them on every reconcile loop.
 func TestAdjustEndpoints_FiltersUnmanageableEndpoints(t *testing.T) {
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider("http://localhost", "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider("http://localhost", "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2426,7 +2101,7 @@ func TestRecords_MixedTTLsReportUnconfigured(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2462,7 +2137,7 @@ func TestRecords_UniformTTLsKeepTTL(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2504,7 +2179,7 @@ func TestRecords_SkipsShadowedRecords(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2546,7 +2221,7 @@ func TestUpdateRecord_ApexSendsFullName(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2581,7 +2256,7 @@ func TestUpdateRecord_SubdomainSendsFullName(t *testing.T) {
 	defer ms.Close()
 
 	domainFilter := endpoint.NewDomainFilter([]string{"example.com"})
-	provider, err := NewProvider(ms.server.URL, "test-api-key", APIVersionV2, domainFilter, false)
+	provider, err := NewProvider(ms.server.URL, "test-api-key", domainFilter, false)
 	if err != nil {
 		t.Fatalf("Failed to create provider: %v", err)
 	}
@@ -2599,34 +2274,5 @@ func TestUpdateRecord_SubdomainSendsFullName(t *testing.T) {
 	}
 	if got := ms.updateCalls[0].request.Name; got != "www.example.com" {
 		t.Errorf("Expected update to send full name www.example.com, got %q", got)
-	}
-}
-
-// v1 only works against PowerAdmin below 4.5.0, so configuring it logs a
-// deprecation warning; the default v2 does not.
-func TestNewProvider_V1LogsDeprecationWarning(t *testing.T) {
-	hook := logtest.NewGlobal()
-	defer hook.Reset()
-
-	if _, err := NewProvider("http://localhost", "key", APIVersionV2, nil, false); err != nil {
-		t.Fatalf("NewProvider v2: %v", err)
-	}
-	for _, entry := range hook.AllEntries() {
-		if entry.Message == v1DeprecationWarning {
-			t.Fatal("v2 provider must not log the v1 deprecation warning")
-		}
-	}
-
-	if _, err := NewProvider("http://localhost", "key", APIVersionV1, nil, false); err != nil {
-		t.Fatalf("NewProvider v1: %v", err)
-	}
-	found := false
-	for _, entry := range hook.AllEntries() {
-		if entry.Message == v1DeprecationWarning {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("expected the v1 deprecation warning to be logged")
 	}
 }
