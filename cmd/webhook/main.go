@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/poweradmin/external-dns-poweradmin-webhook/internal/poweradmin"
+	"github.com/poweradmin/external-dns-poweradmin-webhook/v2/internal/poweradmin"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/provider/webhook/api"
 )
