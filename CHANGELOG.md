@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.2](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v2.0.1...v2.0.2) (2026-11-02)
+
+
+### Dependency Updates
+
+* bump distroless/static-debian13 from `18f4cc2` to `25ac8f0` ([#199](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/199)) ([a0bce36](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/a0bce36751a4207bb069b99c78d6fd4729613862))
+* bump go.yaml.in/yaml/v3 ([#200](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/200)) ([2439142](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/2439142a95d0019c0880bd92bdbd45f540c342af))
+
 ## [2.0.1](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v2.0.0...v2.0.1) (2026-10-31)
 
 
