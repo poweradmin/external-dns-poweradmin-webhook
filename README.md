@@ -31,7 +31,8 @@ A webhook provider for [ExternalDNS](https://github.com/kubernetes-sigs/external
 
 | Webhook Version | PowerAdmin Version | Go | Notes |
 |---|---|---|---|
-| 2.0.0+ | 4.3.0+ (v2) | >= 1.27.3 | API v1 removed |
+| 2.0.3+ | 4.3.0+ (v2) | >= 1.27.4 | Go security fix |
+| 2.0.0 - 2.0.2 | 4.3.0+ (v2) | >= 1.27.3 | API v1 removed |
 | 1.5.1 - 1.5.2 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.27.3 | Distroless Debian 13 |
 | 1.5.0 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1, deprecated) | >= 1.27.0 | API v1 deprecated |
 | 1.4.18 - 1.4.19 | 4.3.0 - 4.5.x (v2), 4.1.0 - 4.4.x (v1) | >= 1.27.0 | Go module updates |
