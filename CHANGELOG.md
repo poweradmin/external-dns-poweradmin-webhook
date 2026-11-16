@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.4](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v2.0.3...v2.0.4) (2026-11-16)
+
+
+### Dependency Updates
+
+* bump the go-modules group with 9 updates ([#210](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/210)) ([cdeef39](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/cdeef39736ee6be9f74a9308d663b67a2ba4cd88))
+
 ## [2.0.3](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v2.0.2...v2.0.3) (2026-11-15)
 
 
