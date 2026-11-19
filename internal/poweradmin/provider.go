@@ -290,6 +290,13 @@ func (p *Provider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.
 			log.Warnf("Skipping endpoint %s: apex NS records are not managed", ep.DNSName)
 			continue
 		}
+		if ep.RecordType == "MX" || ep.RecordType == "SRV" {
+			// Records reports single-spaced targets; collapsing extra
+			// whitespace here keeps the plan from re-updating every loop.
+			for i, target := range ep.Targets {
+				ep.Targets[i] = strings.Join(strings.Fields(target), " ")
+			}
+		}
 		if ep.RecordType == "CNAME" && len(ep.Targets) > 1 {
 			log.Warnf("CNAME %s has %d targets, keeping only %q", ep.DNSName, len(ep.Targets), ep.Targets[0])
 			ep.Targets = ep.Targets[:1]
@@ -373,8 +380,12 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 	disabled := disabledRecords(records, dnsName, newEp.RecordType)
 	ttl := endpointTTL(newEp)
 	// An unset desired TTL never triggers an update by itself, so records
-	// keep whatever TTL they have; only new records get DefaultTTL.
+	// keep whatever TTL they have and added targets join the set at that TTL
+	// (a mixed set would never converge); an empty set gets DefaultTTL.
 	keepTTL := !newEp.RecordTTL.IsConfigured()
+	if keepTTL && len(existing) > 0 {
+		ttl = existing[0].TTL
+	}
 	recordName := extractRecordName(dnsName, zone.Name)
 
 	// Pair desired targets with records that already match so unchanged

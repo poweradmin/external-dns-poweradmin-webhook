@@ -273,7 +273,8 @@ func TestUpdateRecord_DuplicateTargets(t *testing.T) {
 }
 
 // An unset desired TTL must not rewrite untouched records to DefaultTTL when
-// another target change triggers the update; new records get DefaultTTL.
+// another target change triggers the update; added targets join at the set's
+// TTL so the set does not end up with mixed TTLs.
 func TestUpdateRecord_UnsetTTLKeepsExistingTTL(t *testing.T) {
 	zones := []Zone{{ID: 1, Name: "example.com"}}
 	records := map[int][]Record{
@@ -300,8 +301,24 @@ func TestUpdateRecord_UnsetTTLKeepsExistingTTL(t *testing.T) {
 	if len(ms.updateCalls) != 0 {
 		t.Errorf("Expected untouched records to stay as they are, got %d updates", len(ms.updateCalls))
 	}
-	if len(ms.createCalls) != 1 || ms.createCalls[0].Content != "3.3.3.3" || ms.createCalls[0].TTL != DefaultTTL {
-		t.Errorf("Expected one create for 3.3.3.3 with DefaultTTL, got %+v", ms.createCalls)
+	if len(ms.createCalls) != 1 || ms.createCalls[0].Content != "3.3.3.3" || ms.createCalls[0].TTL != 300 {
+		t.Errorf("Expected one create for 3.3.3.3 with TTL 300, got %+v", ms.createCalls)
+	}
+}
+
+// MX/SRV targets with extra whitespace are collapsed so they compare equal to
+// what Records reports.
+func TestAdjustEndpoints_CollapsesMXWhitespace(t *testing.T) {
+	provider := &Provider{}
+	out, err := provider.AdjustEndpoints([]*endpoint.Endpoint{
+		{DNSName: "example.org", RecordType: "MX", Targets: endpoint.Targets{"10  mail.example.org"}},
+		{DNSName: "_sip._tcp.example.org", RecordType: "SRV", Targets: endpoint.Targets{"10 5  5060 sip.example.org"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[0].Targets[0] != "10 mail.example.org" || out[1].Targets[0] != "10 5 5060 sip.example.org" {
+		t.Errorf("whitespace not collapsed: %v %v", out[0].Targets, out[1].Targets)
 	}
 }
 
