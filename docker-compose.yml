@@ -41,9 +41,8 @@
 services:
   poweradmin:
     image: ${POWERADMIN_IMAGE:-poweradmin/poweradmin:latest}
-    container_name: poweradmin-integration
     ports:
-      - "9090:80"
+      - "${POWERADMIN_PORT:-9090}:80"
     environment:
       - DB_TYPE=sqlite
       - PA_CREATE_ADMIN=true
