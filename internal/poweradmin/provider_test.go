@@ -742,6 +742,14 @@ func TestTXT_EscapingRoundTrip(t *testing.T) {
 	if got := recordTarget(Record{Type: "TXT", Content: `"v=a \"b\" c"`}); got != `v=a "b" c` {
 		t.Errorf("recordTarget unescaped = %q", got)
 	}
+	// PowerAdmin stores a single string without its outer quotes.
+	stored := Record{Type: "TXT", Content: `v=a \"b\" c`}
+	if got := recordTarget(stored); got != `v=a "b" c` {
+		t.Errorf("recordTarget of stored content = %q", got)
+	}
+	if !recordMatchesTarget(stored, `v=a "b" c`) {
+		t.Error("stored unquoted content does not match its target")
+	}
 	// Records written before escaping (lone backslash) must not churn.
 	if !recordMatchesTarget(Record{Type: "TXT", Content: `"a\b"`}, `a\b`) {
 		t.Error("legacy unescaped backslash record no longer matches")

@@ -674,14 +674,18 @@ func encodeTXT(target string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v) + `"`
 }
 
-// decodeTXT returns the value of a single quoted character-string with its
-// escapes resolved. Multi-string and unquoted content keep the old
-// strip-one-pair behaviour, so existing targets compare as before.
+// decodeTXT returns the TXT value with escapes resolved. PowerAdmin stores a
+// single string without its outer quotes, so unquoted content is unescaped
+// too; multi-string content keeps the old strip-one-pair behaviour.
 func decodeTXT(content string) string {
-	if parts, ok := splitTXTStrings(content); ok && len(parts) == 1 {
+	parts, ok := splitTXTStrings(content)
+	switch {
+	case ok && len(parts) == 1:
 		return unescapeTXT(parts[0])
+	case ok:
+		return unquoteTXT(content)
 	}
-	return unquoteTXT(content)
+	return unescapeTXT(unquoteTXT(content))
 }
 
 // splitTXTStrings splits content made only of whitespace-separated quoted
