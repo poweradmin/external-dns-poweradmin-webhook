@@ -8,13 +8,16 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # Configuration (overridable via env)
-POWERADMIN_PORT="${POWERADMIN_PORT:-9090}"
+export POWERADMIN_PORT="${POWERADMIN_PORT:-9090}"
+# A dedicated compose project keeps `down -v` from touching another stack
+# started from this directory.
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-poweradmin-webhook-it}"
 WEBHOOK_PORT="${WEBHOOK_PORT:-8888}"
 METRICS_PORT="${METRICS_PORT:-8080}"
 API_KEY="test-api-key-for-integration"
 DOMAIN="integration-test.example.com"
 WEBHOOK_PID=""
-WEBHOOK_LOG="/tmp/webhook-integration-test.log"
+WEBHOOK_LOG="$(mktemp "${TMPDIR:-/tmp}/webhook-integration-test.XXXXXX")"
 TESTS_PASSED=0
 TESTS_FAILED=0
 CURRENT_API_VERSION=""
