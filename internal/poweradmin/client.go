@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // FlexBool is a bool type that can unmarshal from JSON booleans, integers
@@ -225,6 +226,10 @@ type RecordResponseV2 struct {
 // maxResponseBytes caps how much of an API response body is read.
 const maxResponseBytes = 1 << 20
 
+// maxErrorMessageBytes caps a raw (non-JSON) error body kept in an APIError,
+// since proxy error pages end up in logs on every failed call.
+const maxErrorMessageBytes = 512
+
 // doRequest performs an HTTP request to the PowerAdmin API
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
 	var bodyReader io.Reader
@@ -254,21 +259,41 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 
 	// Zone and record responses are small JSON; the cap keeps a misrouted or
 	// hostile endpoint from buffering unbounded data into memory.
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	// One byte past the cap is read so an oversized body is reported as such
+	// rather than as truncated JSON.
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+	tooLarge := len(respBody) > maxResponseBytes
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		message := string(respBody)
+		var message string
 		var apiResp APIResponse
 		if err := json.Unmarshal(respBody, &apiResp); err == nil && apiResp.Message != "" {
 			message = apiResp.Message
+		} else {
+			message = truncateMessage(string(respBody), maxErrorMessageBytes)
 		}
 		return nil, &APIError{StatusCode: resp.StatusCode, Message: message}
 	}
 
+	if tooLarge {
+		return nil, fmt.Errorf("%s %s: response exceeds %d bytes", method, path, maxResponseBytes)
+	}
+
 	return respBody, nil
+}
+
+// truncateMessage shortens s to at most n bytes on a UTF-8 boundary.
+func truncateMessage(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "...(truncated)"
 }
 
 // ListZones returns all zones from PowerAdmin

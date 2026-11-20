@@ -94,6 +94,28 @@ func TestResponseBodyCapped(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for response body exceeding the read cap")
 	}
+	if !strings.Contains(err.Error(), "response exceeds") {
+		t.Errorf("expected explicit size-limit error, got: %v", err)
+	}
+}
+
+// A non-JSON error body (e.g. a proxy error page) is truncated so it does not
+// flood logs through the APIError message.
+func TestErrorBodyTruncated(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("<html>" + strings.Repeat("x", 4096) + "</html>"))
+	}))
+	defer server.Close()
+
+	_, err := NewClient(server.URL, "test-key").ListZones(context.Background())
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected APIError, got %v", err)
+	}
+	if len(apiErr.Message) > maxErrorMessageBytes+len("...(truncated)") {
+		t.Errorf("message not truncated: %d bytes", len(apiErr.Message))
+	}
 }
 
 // A trailing slash in the configured base URL must not produce double-slash

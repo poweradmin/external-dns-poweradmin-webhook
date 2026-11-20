@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"sigs.k8s.io/external-dns/endpoint"
@@ -18,6 +19,18 @@ import (
 const (
 	// DefaultTTL is the default TTL for records
 	DefaultTTL = 3600
+
+	// healthCacheTTL bounds how often Health reaches PowerAdmin, so probe or
+	// scrape traffic on the metrics port cannot fan out into API calls.
+	healthCacheTTL = 5 * time.Second
+)
+
+// Errors that concern a single endpoint rather than PowerAdmin itself.
+// ApplyChanges skips such endpoints so one bad name or target cannot block
+// the rest of the batch on every reconcile.
+var (
+	errNoZone        = errors.New("no zone found")
+	errInvalidTarget = errors.New("invalid target")
 )
 
 // Provider implements the external-dns provider interface for PowerAdmin
@@ -29,6 +42,10 @@ type Provider struct {
 
 	mu        sync.RWMutex
 	zoneCache []Zone
+
+	healthMu      sync.Mutex
+	healthChecked time.Time
+	healthErr     error
 }
 
 // NewProvider creates a new PowerAdmin provider
@@ -167,7 +184,7 @@ func (p *Provider) ApplyChanges(ctx context.Context, changes *plan.Changes) erro
 	// Process deletes first so a record-type change (e.g. CNAME to A) does not
 	// try to create alongside a conflicting record
 	for _, ep := range changes.Delete {
-		if err := p.deleteRecord(ctx, ep); err != nil {
+		if err := skipEndpointError(p.deleteRecord(ctx, ep), "delete", ep); err != nil {
 			return fmt.Errorf("failed to delete record %s: %w", ep.DNSName, err)
 		}
 	}
@@ -176,18 +193,39 @@ func (p *Provider) ApplyChanges(ctx context.Context, changes *plan.Changes) erro
 	for i := range changes.UpdateNew {
 		oldEp := changes.UpdateOld[i]
 		newEp := changes.UpdateNew[i]
-		if err := p.updateRecord(ctx, oldEp, newEp); err != nil {
+		if err := skipEndpointError(p.updateRecord(ctx, oldEp, newEp), "update", newEp); err != nil {
 			return fmt.Errorf("failed to update record %s: %w", newEp.DNSName, err)
 		}
 	}
 
 	// Process creates
 	for _, ep := range changes.Create {
-		if err := p.createRecord(ctx, ep); err != nil {
+		if err := skipEndpointError(p.createRecord(ctx, ep), "create", ep); err != nil {
 			return fmt.Errorf("failed to create record %s: %w", ep.DNSName, err)
 		}
 	}
 
+	return nil
+}
+
+// skipEndpointError logs and drops errors confined to one endpoint (no
+// hosting zone, malformed target); API errors are returned unchanged.
+func skipEndpointError(err error, op string, ep *endpoint.Endpoint) error {
+	if errors.Is(err, errNoZone) || errors.Is(err, errInvalidTarget) {
+		log.Warnf("Skipping %s of %s %s: %v", op, ep.DNSName, ep.RecordType, err)
+		return nil
+	}
+	return err
+}
+
+// validateTargets rejects an endpoint before any write if one of its targets
+// cannot be converted, so a bad target never leaves a half-applied record set.
+func validateTargets(ep *endpoint.Endpoint) error {
+	for _, target := range ep.Targets {
+		if _, _, err := parseTarget(ep.RecordType, target); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -219,9 +257,20 @@ func (p *Provider) refreshZoneCache(ctx context.Context) ([]Zone, error) {
 	return filtered, nil
 }
 
-// Health reports whether the PowerAdmin API is reachable and responding
+// Health reports whether the PowerAdmin API is reachable and responding. The
+// result is cached for healthCacheTTL.
 func (p *Provider) Health(ctx context.Context) error {
+	p.healthMu.Lock()
+	defer p.healthMu.Unlock()
+	if !p.healthChecked.IsZero() && time.Since(p.healthChecked) < healthCacheTTL {
+		return p.healthErr
+	}
 	_, err := p.client.ListZones(ctx)
+	// A probe that timed out or was cancelled says nothing lasting about
+	// PowerAdmin, so it is not cached.
+	if ctx.Err() == nil {
+		p.healthChecked, p.healthErr = time.Now(), err
+	}
 	return err
 }
 
@@ -240,6 +289,13 @@ func (p *Provider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.
 		if ep.RecordType == "NS" && p.isZoneApex(normalizeDNSName(ep.DNSName)) {
 			log.Warnf("Skipping endpoint %s: apex NS records are not managed", ep.DNSName)
 			continue
+		}
+		if ep.RecordType == "MX" || ep.RecordType == "SRV" {
+			// Records reports single-spaced targets; collapsing extra
+			// whitespace here keeps the plan from re-updating every loop.
+			for i, target := range ep.Targets {
+				ep.Targets[i] = strings.Join(strings.Fields(target), " ")
+			}
 		}
 		if ep.RecordType == "CNAME" && len(ep.Targets) > 1 {
 			log.Warnf("CNAME %s has %d targets, keeping only %q", ep.DNSName, len(ep.Targets), ep.Targets[0])
@@ -276,6 +332,9 @@ func (p *Provider) createRecord(ctx context.Context, ep *endpoint.Endpoint) erro
 	if err != nil {
 		return err
 	}
+	if err := validateTargets(ep); err != nil {
+		return err
+	}
 
 	// List existing records so a disabled record matching a target can be
 	// re-enabled instead of duplicated.
@@ -307,6 +366,9 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 	if err != nil {
 		return err
 	}
+	if err := validateTargets(newEp); err != nil {
+		return err
+	}
 
 	// Get existing records to find record IDs
 	records, err := p.client.ListRecords(ctx, zone.ID)
@@ -317,6 +379,13 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 	existing := claimRecords(records, normalizeDNSName(oldEp.DNSName), oldEp.RecordType, oldEp.Targets)
 	disabled := disabledRecords(records, dnsName, newEp.RecordType)
 	ttl := endpointTTL(newEp)
+	// An unset desired TTL never triggers an update by itself, so records
+	// keep whatever TTL they have and added targets join the set at that TTL
+	// (a mixed set would never converge); an empty set gets DefaultTTL.
+	keepTTL := !newEp.RecordTTL.IsConfigured()
+	if keepTTL && len(existing) > 0 {
+		ttl = existing[0].TTL
+	}
 	recordName := extractRecordName(dnsName, zone.Name)
 
 	// Pair desired targets with records that already match so unchanged
@@ -326,7 +395,7 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 	for _, target := range newEp.Targets {
 		matched := false
 		for i, record := range existing {
-			if !used[i] && record.TTL == ttl && recordMatchesTarget(record, target) {
+			if !used[i] && (keepTTL || record.TTL == ttl) && recordMatchesTarget(record, target) {
 				used[i] = true
 				matched = true
 				break
@@ -353,7 +422,11 @@ func (p *Provider) updateRecord(ctx context.Context, oldEp, newEp *endpoint.Endp
 			continue
 		}
 
-		if err := p.updateOne(ctx, zone, leftover[i], dnsName, newEp.RecordType, target, ttl); err != nil {
+		rewriteTTL := ttl
+		if keepTTL {
+			rewriteTTL = leftover[i].TTL
+		}
+		if err := p.updateOne(ctx, zone, leftover[i], dnsName, newEp.RecordType, target, rewriteTTL); err != nil {
 			return err
 		}
 	}
@@ -529,7 +602,7 @@ func (p *Provider) findZoneForName(dnsName string) (*Zone, error) {
 	}
 
 	if matchedZone == nil {
-		return nil, fmt.Errorf("no zone found for endpoint %s", dnsName)
+		return nil, fmt.Errorf("%w for endpoint %s", errNoZone, dnsName)
 	}
 
 	return matchedZone, nil
@@ -562,33 +635,109 @@ func endpointTTL(ep *endpoint.Endpoint) int {
 // parseTarget splits an external-dns target into the content and priority the
 // PowerAdmin API stores separately. MX targets are "<priority> <host>" and SRV
 // targets are "<priority> <weight> <port> <host>"; both must carry a numeric
-// priority or the record cannot be represented faithfully.
+// priority or the record cannot be represented faithfully. Fields may be
+// separated by any run of whitespace, as external-dns itself accepts.
 func parseTarget(recordType, target string) (content string, priority *int, err error) {
 	switch recordType {
 	case "MX":
-		if prioStr, host, ok := strings.Cut(target, " "); ok && host != "" {
-			if prio, err := strconv.Atoi(prioStr); err == nil {
-				return host, &prio, nil
+		if fields := strings.Fields(target); len(fields) == 2 {
+			if prio, err := strconv.Atoi(fields[0]); err == nil {
+				return fields[1], &prio, nil
 			}
 		}
-		return "", nil, fmt.Errorf("invalid MX target %q: expected \"priority host\"", target)
+		return "", nil, fmt.Errorf("%w: MX target %q: expected \"priority host\"", errInvalidTarget, target)
 	case "SRV":
-		parts := strings.SplitN(target, " ", 4)
-		if len(parts) == 4 && parts[3] != "" {
-			prio, errPrio := strconv.Atoi(parts[0])
-			_, errWeight := strconv.Atoi(parts[1])
-			_, errPort := strconv.Atoi(parts[2])
+		if fields := strings.Fields(target); len(fields) == 4 {
+			prio, errPrio := strconv.Atoi(fields[0])
+			_, errWeight := strconv.Atoi(fields[1])
+			_, errPort := strconv.Atoi(fields[2])
 			if errPrio == nil && errWeight == nil && errPort == nil {
-				return strings.Join(parts[1:], " "), &prio, nil
+				return strings.Join(fields[1:], " "), &prio, nil
 			}
 		}
-		return "", nil, fmt.Errorf("invalid SRV target %q: expected \"priority weight port target\"", target)
+		return "", nil, fmt.Errorf("%w: SRV target %q: expected \"priority weight port target\"", errInvalidTarget, target)
 	case "TXT":
-		// Ensure TXT records are quoted for the PowerAdmin API
-		return fmt.Sprintf("\"%s\"", unquoteTXT(target)), nil, nil
+		return encodeTXT(target), nil, nil
 	}
 
 	return target, nil, nil
+}
+
+// encodeTXT renders a TXT target as quoted zone-file content. Targets that are
+// already quoted character-strings pass through; anything else has one
+// surrounding quote pair stripped and inner quotes and backslashes escaped.
+func encodeTXT(target string) string {
+	if _, ok := splitTXTStrings(target); ok {
+		return target
+	}
+	v := unquoteTXT(target)
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v) + `"`
+}
+
+// decodeTXT returns the TXT value with escapes resolved. PowerAdmin stores a
+// single string without its outer quotes, so unquoted content is unescaped
+// too; multi-string content keeps the old strip-one-pair behaviour.
+func decodeTXT(content string) string {
+	parts, ok := splitTXTStrings(content)
+	switch {
+	case ok && len(parts) == 1:
+		return unescapeTXT(parts[0])
+	case ok:
+		return unquoteTXT(content)
+	}
+	return unescapeTXT(unquoteTXT(content))
+}
+
+// splitTXTStrings splits content made only of whitespace-separated quoted
+// strings into their raw (still escaped) bodies; ok is false otherwise.
+func splitTXTStrings(content string) (parts []string, ok bool) {
+	s := strings.TrimSpace(content)
+	if s == "" {
+		return nil, false
+	}
+	for s != "" {
+		if s[0] != '"' {
+			return nil, false
+		}
+		end := -1
+		for i := 1; i < len(s); i++ {
+			if s[i] == '\\' {
+				i++
+				continue
+			}
+			if s[i] == '"' {
+				end = i
+				break
+			}
+		}
+		if end < 0 {
+			return nil, false
+		}
+		parts = append(parts, s[1:end])
+		rest := s[end+1:]
+		trimmed := strings.TrimLeft(rest, " \t")
+		if trimmed != "" && trimmed == rest {
+			return nil, false
+		}
+		s = trimmed
+	}
+	return parts, true
+}
+
+// unescapeTXT resolves \" and \\ escapes; any other backslash is kept
+// verbatim so records written before escaping was added do not churn.
+func unescapeTXT(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) && (s[i+1] == '"' || s[i+1] == '\\') {
+			i++
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 // unquoteTXT strips one pair of surrounding quotes from TXT content. A blanket
@@ -607,7 +756,7 @@ func unquoteTXT(content string) string {
 func recordTarget(record Record) string {
 	switch record.Type {
 	case "TXT":
-		return unquoteTXT(record.Content)
+		return decodeTXT(record.Content)
 	case "MX", "SRV":
 		// A missing priority is exposed as 0 so the target always carries the
 		// numeric prefix parseTarget requires on the way back in.
@@ -622,13 +771,11 @@ func recordTarget(record Record) string {
 	return record.Content
 }
 
-// normalizeTarget canonicalizes a target for comparison. The API may return
-// TXT content quoted or unquoted, and hostname-valued content may differ in
-// case or carry a trailing dot without being a different target.
+// normalizeTarget canonicalizes a non-TXT target for comparison:
+// hostname-valued content may differ in case or carry a trailing dot without
+// being a different target.
 func normalizeTarget(recordType, target string) string {
 	switch recordType {
-	case "TXT":
-		return unquoteTXT(target)
 	case "CNAME", "MX", "NS", "PTR", "SRV":
 		return normalizeDNSName(target)
 	}
@@ -638,6 +785,12 @@ func normalizeTarget(recordType, target string) string {
 // recordMatchesTarget reports whether a PowerAdmin record represents the given
 // external-dns target.
 func recordMatchesTarget(record Record, target string) bool {
+	if record.Type == "TXT" {
+		// A target is either user input (decoded like content) or a value
+		// Records exposed (already decoded); a quoted value is ambiguous.
+		value := decodeTXT(record.Content)
+		return decodeTXT(target) == value || target == value
+	}
 	return normalizeTarget(record.Type, recordTarget(record)) == normalizeTarget(record.Type, target)
 }
 
