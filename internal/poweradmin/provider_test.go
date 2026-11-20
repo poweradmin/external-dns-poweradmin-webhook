@@ -9,7 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
@@ -257,32 +259,66 @@ func TestUpdateRecord_DuplicateTargets(t *testing.T) {
 		t.Fatalf("updateRecord failed: %v", err)
 	}
 
-	// Verify: should have 2 update calls - one for each record
-	if len(ms.updateCalls) != 2 {
-		t.Errorf("Expected 2 update calls, got %d", len(ms.updateCalls))
+	// One duplicate keeps serving 1.1.1.1 untouched; only the other one is
+	// rewritten, keeping its TTL since the desired TTL is unset.
+	if len(ms.updateCalls) != 1 {
+		t.Fatalf("Expected 1 update call, got %d", len(ms.updateCalls))
+	}
+	if got := ms.updateCalls[0].request; got.Content != "2.2.2.2" || got.TTL != 300 {
+		t.Errorf("Expected update to 2.2.2.2 with TTL 300, got %q TTL %d", got.Content, got.TTL)
+	}
+	if len(ms.createCalls) != 0 || len(ms.deleteCalls) != 0 {
+		t.Errorf("Expected no creates or deletes, got %d/%d", len(ms.createCalls), len(ms.deleteCalls))
+	}
+}
+
+// An unset desired TTL must not rewrite untouched records to DefaultTTL when
+// another target change triggers the update; added targets join at the set's
+// TTL so the set does not end up with mixed TTLs.
+func TestUpdateRecord_UnsetTTLKeepsExistingTTL(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	records := map[int][]Record{
+		1: {
+			{ID: "101", ZoneID: 1, Name: "a.example.com", Type: "A", Content: "1.1.1.1", TTL: 300},
+			{ID: "102", ZoneID: 1, Name: "a.example.com", Type: "A", Content: "2.2.2.2", TTL: 300},
+		},
+	}
+	ms := newMockServer(zones, records)
+	defer ms.Close()
+
+	provider, err := NewProvider(ms.server.URL, "test-api-key", nil, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	provider.zoneCache = zones
+
+	oldEp := &endpoint.Endpoint{DNSName: "a.example.com", RecordType: "A", Targets: endpoint.Targets{"1.1.1.1", "2.2.2.2"}, RecordTTL: 300}
+	newEp := &endpoint.Endpoint{DNSName: "a.example.com", RecordType: "A", Targets: endpoint.Targets{"1.1.1.1", "2.2.2.2", "3.3.3.3"}}
+	if err := provider.updateRecord(context.Background(), oldEp, newEp); err != nil {
+		t.Fatalf("updateRecord failed: %v", err)
 	}
 
-	// Verify different record IDs were updated
-	recordIDs := make(map[RecordID]bool)
-	for _, call := range ms.updateCalls {
-		recordIDs[call.recordID] = true
+	if len(ms.updateCalls) != 0 {
+		t.Errorf("Expected untouched records to stay as they are, got %d updates", len(ms.updateCalls))
 	}
+	if len(ms.createCalls) != 1 || ms.createCalls[0].Content != "3.3.3.3" || ms.createCalls[0].TTL != 300 {
+		t.Errorf("Expected one create for 3.3.3.3 with TTL 300, got %+v", ms.createCalls)
+	}
+}
 
-	if len(recordIDs) != 2 {
-		t.Errorf("Expected 2 different record IDs to be updated, got %d", len(recordIDs))
+// MX/SRV targets with extra whitespace are collapsed so they compare equal to
+// what Records reports.
+func TestAdjustEndpoints_CollapsesMXWhitespace(t *testing.T) {
+	provider := &Provider{}
+	out, err := provider.AdjustEndpoints([]*endpoint.Endpoint{
+		{DNSName: "example.org", RecordType: "MX", Targets: endpoint.Targets{"10  mail.example.org"}},
+		{DNSName: "_sip._tcp.example.org", RecordType: "SRV", Targets: endpoint.Targets{"10 5  5060 sip.example.org"}},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// Verify both new contents are present
-	contents := make(map[string]bool)
-	for _, call := range ms.updateCalls {
-		contents[call.request.Content] = true
-	}
-
-	if !contents["1.1.1.1"] {
-		t.Error("Expected one update to keep 1.1.1.1")
-	}
-	if !contents["2.2.2.2"] {
-		t.Error("Expected one update to 2.2.2.2")
+	if out[0].Targets[0] != "10 mail.example.org" || out[1].Targets[0] != "10 5 5060 sip.example.org" {
+		t.Errorf("whitespace not collapsed: %v %v", out[0].Targets, out[1].Targets)
 	}
 }
 
@@ -668,10 +704,113 @@ func TestParseTarget_TXT(t *testing.T) {
 	}
 
 	// Quotes that are part of the value must survive: only the surrounding
-	// pair is stripped before re-quoting
+	// pair is stripped, and the inner quotes are escaped
 	content3, _, _ := parseTarget("TXT", "\"\"inner\"\"")
-	if content3 != "\"\"inner\"\"" {
-		t.Errorf("Expected inner quotes preserved, got %q", content3)
+	if content3 != `"\"inner\""` {
+		t.Errorf("Expected inner quotes escaped, got %q", content3)
+	}
+}
+
+// Inner quotes and backslashes are escaped on write and resolved on read, so
+// the value round-trips and the record keeps matching its target.
+func TestTXT_EscapingRoundTrip(t *testing.T) {
+	cases := []struct{ target, content string }{
+		{`v=a "b" c`, `"v=a \"b\" c"`},
+		{`a\b`, `"a\\b"`},
+		{`plain value`, `"plain value"`},
+		{`"p1" "p2"`, `"p1" "p2"`},
+		{`"already \"quoted\""`, `"already \"quoted\""`},
+	}
+	for _, tc := range cases {
+		content, _, err := parseTarget("TXT", tc.target)
+		if err != nil {
+			t.Fatalf("parseTarget(%q) failed: %v", tc.target, err)
+		}
+		if content != tc.content {
+			t.Errorf("parseTarget(%q) = %q, want %q", tc.target, content, tc.content)
+		}
+		record := Record{Type: "TXT", Content: content}
+		if !recordMatchesTarget(record, tc.target) {
+			t.Errorf("record %q does not match its target %q", content, tc.target)
+		}
+		// Delete/UpdateOld targets come from Records, i.e. recordTarget.
+		if !recordMatchesTarget(record, recordTarget(record)) {
+			t.Errorf("record %q does not match its exposed target %q", content, recordTarget(record))
+		}
+	}
+
+	if got := recordTarget(Record{Type: "TXT", Content: `"v=a \"b\" c"`}); got != `v=a "b" c` {
+		t.Errorf("recordTarget unescaped = %q", got)
+	}
+	// PowerAdmin stores a single string without its outer quotes.
+	stored := Record{Type: "TXT", Content: `v=a \"b\" c`}
+	if got := recordTarget(stored); got != `v=a "b" c` {
+		t.Errorf("recordTarget of stored content = %q", got)
+	}
+	if !recordMatchesTarget(stored, `v=a "b" c`) {
+		t.Error("stored unquoted content does not match its target")
+	}
+	// Records written before escaping (lone backslash) must not churn.
+	if !recordMatchesTarget(Record{Type: "TXT", Content: `"a\b"`}, `a\b`) {
+		t.Error("legacy unescaped backslash record no longer matches")
+	}
+}
+
+// Fields separated by extra whitespace are accepted, as external-dns does.
+func TestParseTarget_ExtraWhitespace(t *testing.T) {
+	content, prio, err := parseTarget("MX", "10  mail.example.com")
+	if err != nil || content != "mail.example.com" || prio == nil || *prio != 10 {
+		t.Errorf("MX: got %q %v %v", content, prio, err)
+	}
+	content, prio, err = parseTarget("SRV", "10  5 5060  sip.example.com")
+	if err != nil || content != "5 5060 sip.example.com" || prio == nil || *prio != 10 {
+		t.Errorf("SRV: got %q %v %v", content, prio, err)
+	}
+}
+
+// One endpoint with no hosting zone or a malformed target is skipped instead
+// of aborting the rest of the batch.
+func TestApplyChanges_SkipsUnroutableAndInvalidEndpoints(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	ms := newMockServer(zones, map[int][]Record{1: {}})
+	defer ms.Close()
+
+	provider, err := NewProvider(ms.server.URL, "test-api-key", nil, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	err = provider.ApplyChanges(context.Background(), &plan.Changes{
+		Create: []*endpoint.Endpoint{
+			{DNSName: "foo.not-hosted.org", RecordType: "A", Targets: endpoint.Targets{"9.9.9.9"}},
+			{DNSName: "mx.example.com", RecordType: "MX", Targets: endpoint.Targets{"10 mail.example.com", "bogus"}},
+			{DNSName: "www.example.com", RecordType: "A", Targets: endpoint.Targets{"1.1.1.1"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ApplyChanges returned error: %v", err)
+	}
+	if len(ms.createCalls) != 1 || ms.createCalls[0].Content != "1.1.1.1" {
+		t.Errorf("Expected only the valid endpoint created, got %+v", ms.createCalls)
+	}
+}
+
+// API failures still abort the batch.
+func TestApplyChanges_APIErrorStillFails(t *testing.T) {
+	zones := []Zone{{ID: 1, Name: "example.com"}}
+	ms := newMockServer(zones, map[int][]Record{1: {}})
+	defer ms.Close()
+	ms.createStatus = http.StatusInternalServerError
+
+	provider, err := NewProvider(ms.server.URL, "test-api-key", nil, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	err = provider.ApplyChanges(context.Background(), &plan.Changes{
+		Create: []*endpoint.Endpoint{{DNSName: "www.example.com", RecordType: "A", Targets: endpoint.Targets{"1.1.1.1"}}},
+	})
+	if err == nil {
+		t.Fatal("expected API error to be returned")
 	}
 }
 
@@ -1228,8 +1367,36 @@ func TestProviderHealth(t *testing.T) {
 	}
 
 	server.Close()
+	if err := provider.Health(context.Background()); err != nil {
+		t.Errorf("expected cached healthy result within healthCacheTTL, got: %v", err)
+	}
+
+	provider.healthChecked = time.Time{} // expire the cache
 	if err := provider.Health(context.Background()); err == nil {
 		t.Error("expected error when PowerAdmin is unreachable")
+	}
+}
+
+// Health is cached so repeated /readyz hits do not each call PowerAdmin.
+func TestProviderHealth_Cached(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"success":true,"data":{"zones":[]}}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(server.URL, "test-key", nil, false)
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+	for i := 0; i < 5; i++ {
+		if err := provider.Health(context.Background()); err != nil {
+			t.Fatalf("Health failed: %v", err)
+		}
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("Expected 1 upstream call, got %d", got)
 	}
 }
 
