@@ -37,7 +37,7 @@ clean:
 
 .PHONY: docker-build
 docker-build:
-	docker build -t $(DOCKER_IMAGE):$(VERSION) .
+	docker build --build-arg VERSION=$(VERSION) -t $(DOCKER_IMAGE):$(VERSION) .
 	docker tag $(DOCKER_IMAGE):$(VERSION) $(DOCKER_IMAGE):latest
 
 .PHONY: docker-push
