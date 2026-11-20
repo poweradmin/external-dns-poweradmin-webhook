@@ -19,6 +19,9 @@ rules:
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "watch", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -33,17 +36,9 @@ subjects:
     name: external-dns
     namespace: external-dns
 ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: poweradmin-credentials
-  namespace: external-dns
-type: Opaque
-stringData:
-  # Replace with your actual PowerAdmin URL and API key
-  POWERADMIN_URL: "https://poweradmin.example.com"
-  POWERADMIN_API_KEY: "your-api-key-here"
----
+# Credentials come from the poweradmin-credentials Secret created with
+# `kubectl create secret` (see README); it is not defined here so applying
+# this file never overwrites it.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -94,6 +89,7 @@ spec:
 
         # PowerAdmin webhook sidecar
         - name: poweradmin-webhook
+          # Pin to a release tag (e.g. :v2.0.4) for reproducible rollouts
           image: poweradmin/external-dns-poweradmin-webhook:latest
           securityContext:
             allowPrivilegeEscalation: false

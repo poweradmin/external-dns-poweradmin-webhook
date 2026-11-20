@@ -130,7 +130,6 @@ kubectl create secret generic poweradmin-credentials \
 Create a Helm values file `external-dns-poweradmin-values.yaml`:
 
 ```yaml
-namespace: external-dns
 policy: sync
 sources:
   - service
@@ -198,7 +197,7 @@ kubectl create secret generic poweradmin-credentials \
   -n external-dns
 ```
 
-3. Apply the deployment:
+3. Apply the deployment (it does not contain the Secret, so the credentials from step 2 are kept):
 ```bash
 kubectl apply -f deploy/kubernetes/deployment.yaml
 ```
