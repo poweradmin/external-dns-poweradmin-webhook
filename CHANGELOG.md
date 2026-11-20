@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.5](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v2.0.4...v2.0.5) (2026-11-20)
+
+
+### Bug Fixes
+
+* **provider:** skip unroutable endpoints, escape TXT quotes, keep unset TTLs, cap error bodies ([#212](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/212)) ([e6dbe80](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/e6dbe808fa0de630a99e3583ceebca603471fecc))
+
+
+### Documentation
+
+* **deploy:** stop manifest overwriting credentials Secret, add EndpointSlice RBAC ([#213](https://github.com/poweradmin/external-dns-poweradmin-webhook/issues/213)) ([e7d3bc1](https://github.com/poweradmin/external-dns-poweradmin-webhook/commit/e7d3bc136c9258d742b25ccb2519ebd56f2b6f4a))
+
 ## [2.0.4](https://github.com/poweradmin/external-dns-poweradmin-webhook/compare/v2.0.3...v2.0.4) (2026-11-16)
 
 
